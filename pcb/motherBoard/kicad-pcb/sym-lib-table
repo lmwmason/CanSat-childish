@@ -1,0 +1,5 @@
+(sym_lib_table
+  (version 7)
+  (lib (name "ELRSLocal") (type "KiCad") (uri "${KIPRJMOD}/ELRSLocal.kicad_sym") (options "") (descr "Local AnyLeaf-derived symbols with corrected pin types"))
+  (lib (name "JLCIntegrated") (type "KiCad") (uri "${KIPRJMOD}/JLCIntegrated.kicad_sym") (options "") (descr "Verified LCSC/JLCPCB component symbols"))
+)
