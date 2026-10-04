@@ -1,31 +1,30 @@
 #include <Arduino.h>
-#include "dht11.h"
+#include "comm/serial_cmd.h"
+#include "core/state.h"
+#include "mission/boot.h"
+#include "mission/mission.h"
+#include "sensors/sensors.h"
+#include "ui/indicator.h"
 
-constexpr uint8_t DHT_PIN = 2;
-
-dht11 sensor(DHT_PIN);
-
-void setup() {
-  Serial.begin(9600);
-  sensor.begin();
-  delay(1000); // DHT11 needs ~1 s to settle after power-up
+void setup()
+{
+  bootSystem();
 }
 
-void loop() {
-  switch (sensor.read()) {
-    case dht11::OK:
-      Serial.print(F("Humidity: "));
-      Serial.print(sensor.humidity());
-      Serial.print(F(" %  Temperature: "));
-      Serial.print(sensor.temperature());
-      Serial.println(F(" C"));
-      break;
-    case dht11::ERROR_CHECKSUM:
-      Serial.println(F("DHT11 checksum error"));
-      break;
-    case dht11::ERROR_TIMEOUT:
-      Serial.println(F("DHT11 timeout (check wiring)"));
-      break;
+void loop()
+{
+  const uint32_t now = millis();
+
+  if (state != STATE_LANDED) sampleSensors(now);
+
+  switch (state)
+  {
+    case STATE_ARMED:   handleArmed(now);   break;
+    case STATE_DESCENT: handleDescent(now); break;
+    default: break;
   }
-  delay(2000);
+
+  updateLeds(now);
+  beepUpdate(now);
+  handleSerial();
 }
