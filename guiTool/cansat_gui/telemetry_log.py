@@ -1,6 +1,6 @@
 """Flight data recorder: one CSV row per received telemetry frame + the raw CRSF byte stream.
 
-Files go to  guiTool/logs/  (packaged app: ~/CanSat Logs/)  as  mother_YYYYmmdd_HHMMSS.csv  and  .crsf  (raw bytes, for replay/debug).
+Files go to  guiTool/logs/  (packaged app / .pyz: ~/CanSat Logs/)  as  mother_YYYYmmdd_HHMMSS.csv  and  .crsf  (raw bytes, for replay/debug).
 Every row is flushed immediately so a power cut on the ground station loses at most one row.
 """
 import csv
@@ -12,9 +12,11 @@ from .crsf import CSV_COLUMNS, MotherState, csv_row
 
 
 def _default_log_dir() -> Path:
-    if getattr(sys, "frozen", False):          # packaged app: the install folder may be read-only
+    src = Path(__file__).resolve().parent.parent
+    # packaged app (PyInstaller) or zipapp (.pyz): the install location is read-only or not a folder
+    if getattr(sys, "frozen", False) or not src.is_dir():
         return Path.home() / "CanSat Logs"
-    return Path(__file__).resolve().parent.parent / "logs"
+    return src / "logs"
 
 
 LOG_DIR = _default_log_dir()

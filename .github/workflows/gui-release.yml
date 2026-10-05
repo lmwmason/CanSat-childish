@@ -1,4 +1,5 @@
-# Builds the ground station (guiTool) for Raspberry Pi (arm64), Linux x64 and Windows x64.
+# Builds the ground station (guiTool): AppImage for Raspberry Pi (aarch64) and Linux x64, a zip for
+# Windows x64, and the architecture-independent CanSatGroundStation.pyz (+ run-on-pi.sh).
 #
 #   Release:   push a tag named  gui-vX.Y.Z   (e.g. gui-v0.1.0)  -> builds, then attaches
 #              the three archives to a GitHub release for that tag.
@@ -37,17 +38,23 @@ jobs:
               set -e
               apt-get update -qq
               apt-get install -y -qq binutils libgl1 libegl1 libxkbcommon0 libfontconfig1 \
-                libdbus-1-3 libglib2.0-0 libxcb-cursor0
+                libdbus-1-3 libglib2.0-0 libxcb-cursor0 curl file
               python -m pip install -q -r requirements-build.txt
               python -m unittest discover -s tests
               pyinstaller cansat_gui.spec --noconfirm
               QT_QPA_PLATFORM=offscreen dist/CanSatGroundStation/CanSatGroundStation --selftest
-              chmod -R a+rX dist
+              tools/make_appimage.sh
+              QT_QPA_PLATFORM=offscreen build/CanSatGroundStation-*.AppImage --appimage-extract-and-run --selftest
+              python tools/build_zipapp.py
+              chmod -R a+rX build
             '
       - name: Package
         run: |
           mkdir -p out
-          tar -C guiTool/dist -czf "out/CanSatGroundStation-${{ github.ref_name }}-linux-${{ matrix.arch }}.tar.gz" CanSatGroundStation
+          cp guiTool/build/CanSatGroundStation-*.AppImage out/
+          if [ "${{ matrix.arch }}" = "x64" ]; then   # the .pyz is identical on every machine, publish it once
+            cp guiTool/build/CanSatGroundStation.pyz guiTool/tools/run-on-pi.sh out/
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: linux-${{ matrix.arch }}
@@ -101,6 +108,11 @@ jobs:
           body: |
             Space Chamchu ground station (guiTool).
 
-            **Raspberry Pi (64-bit OS):** download the `linux-arm64` archive, then
-            `sudo apt install libxcb-cursor0`, unpack it and run `./CanSatGroundStation/CanSatGroundStation`.
+            **Raspberry Pi 4/5, 64-bit OS:** download `CanSatGroundStation-aarch64.AppImage`, then
+            `chmod +x CanSatGroundStation-aarch64.AppImage && sudo apt install libfuse2 libxcb-cursor0`
+            and run it (without libfuse2: `--appimage-extract-and-run`).
+
+            **Any Raspberry Pi OS (also 32-bit):** download `CanSatGroundStation.pyz` and `run-on-pi.sh`
+            into one folder and run `./run-on-pi.sh` (installs PyQt6 from apt on the first run).
+
             Add your user to the `dialout` group for serial access. Telemetry/CSV logs are saved in `~/CanSat Logs/`.

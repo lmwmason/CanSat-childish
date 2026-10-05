@@ -80,9 +80,21 @@ def apply_theme(app: QApplication) -> None:
 LOGO_PATH = str(__import__("pathlib").Path(__file__).with_name("logo.png"))
 
 
+_logo = None
+
+
 def logo_pixmap():
+    """Logo as a QPixmap. Read through importlib.resources so it also works from a zipapp."""
+    global _logo
     from PyQt6.QtGui import QPixmap
-    return QPixmap(LOGO_PATH)
+    if _logo is None:
+        _logo = QPixmap()
+        try:
+            from importlib.resources import files
+            _logo.loadFromData(files("cansat_gui").joinpath("logo.png").read_bytes())
+        except Exception:
+            _logo = QPixmap(LOGO_PATH)
+    return _logo
 
 
 def logo_icon():
