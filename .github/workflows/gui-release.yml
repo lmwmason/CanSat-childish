@@ -2,8 +2,8 @@
 # Windows x64, and the architecture-independent CanSatGroundStation.pyz (+ run-on-pi.sh).
 #
 #   Release:   push a tag named  gui-vX.Y.Z   (e.g. gui-v0.1.0)  -> builds, then attaches
-#              the three archives to a GitHub release for that tag.
-#   Test run:  Actions tab -> "GUI release build" -> Run workflow  -> builds only, the archives
+#              the files to a GitHub release for that tag. The release text is the "body:" below.
+#   Test run:  Actions tab -> "GUI release build" -> Run workflow  -> builds only, the files
 #              are kept as workflow artifacts (no release is created).
 name: GUI release build
 
@@ -39,7 +39,8 @@ jobs:
               apt-get update -qq
               apt-get install -y -qq binutils libgl1 libegl1 libxkbcommon0 libfontconfig1 \
                 libdbus-1-3 libglib2.0-0 libxcb-cursor0 curl file
-              python -m pip install -q -r requirements-build.txt
+              # wheels only: on arm64 pip would otherwise try to build PyQt6 from source (needs qmake)
+              python -m pip install -q --only-binary=:all: -r requirements-build.txt
               python -m unittest discover -s tests
               pyinstaller cansat_gui.spec --noconfirm
               QT_QPA_PLATFORM=offscreen dist/CanSatGroundStation/CanSatGroundStation --selftest
@@ -102,17 +103,51 @@ jobs:
           merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
-          name: Ground Station ${{ github.ref_name }}
+          name: CANSAT gui ground station ${{ github.ref_name }}
           files: out/*
-          generate_release_notes: true
+          generate_release_notes: false
           body: |
-            Space Chamchu ground station (guiTool).
+            # CANSAT gui ground station!
 
-            **Raspberry Pi 4/5, 64-bit OS:** download `CanSatGroundStation-aarch64.AppImage`, then
-            `chmod +x CanSatGroundStation-aarch64.AppImage && sudo apt install libfuse2 libxcb-cursor0`
-            and run it (without libfuse2: `--appimage-extract-and-run`).
+            <img width="1536" height="1024" alt="logo" src="https://github.com/user-attachments/assets/d873c5cb-69be-4f5a-94f3-1af86695eddb" />
 
-            **Any Raspberry Pi OS (also 32-bit):** download `CanSatGroundStation.pyz` and `run-on-pi.sh`
-            into one folder and run `./run-on-pi.sh` (installs PyQt6 from apt on the first run).
+            Ground station for the Space Chamchu CanSat. It receives the **mother CanSat's telemetry over a TBS Crossfire (CRSF) link**, shows it live, and records everything to CSV. It runs on a Raspberry Pi 4 with a Crossfire Micro TX V2.
 
-            Add your user to the `dialout` group for serial access. Telemetry/CSV logs are saved in `~/CanSat Logs/`.
+            ## Features
+
+            - **Live flight view** (Mission page): artificial horizon, mission-state bar (IDLE → WAIT → STAB → SPIN → OPEN → REST → WING → LANDED), values for attitude, yaw rate, acceleration, reaction-wheel command, altitude, speed, GPS, distance to home, RSSI and link quality, plus live plots.
+            - **Ground track**: top-down map with the home point (where the drop was detected), the 50 m loiter circle and the aircraft heading.
+            - **CSV recording**: one row per telemetry frame, saved automatically to `~/CanSat Logs/` together with the raw CRSF byte stream.
+            - **Uplink switches**: AUX1 (drop arm) and AUX2 (elevon manual/auto) are sent to the CanSat from the Actions tab. AUX1 asks for confirmation.
+            - **Demo mode**: a synthetic flight that goes through the real decode and CSV path, so you can try the program without hardware.
+            - **Data page**: reads the child CanSat's EEPROM log over serial.
+
+            ## Downloads
+
+            | File | For |
+            |------|-----|
+            | `CanSatGroundStation-aarch64.AppImage` | **Raspberry Pi 4/5, 64-bit OS** |
+            | `CanSatGroundStation-x86_64.AppImage` | Linux PC |
+            | `CanSatGroundStation-…-windows-x64.zip` | Windows PC |
+            | `CanSatGroundStation.pyz` + `run-on-pi.sh` | Any Raspberry Pi OS (also 32-bit), if the AppImage does not work |
+
+            ## Raspberry Pi quick start
+
+            ```bash
+            sudo apt install libfuse2 libxcb-cursor0
+            chmod +x CanSatGroundStation-aarch64.AppImage
+            ./CanSatGroundStation-aarch64.AppImage
+            ```
+
+            - Without `libfuse2`, run it with `--appimage-extract-and-run`.
+            - Alternative: put `CanSatGroundStation.pyz` and `run-on-pi.sh` in one folder and run `./run-on-pi.sh` (installs PyQt6 from apt the first time).
+            - Serial access needs the `dialout` group: `sudo usermod -aG dialout $USER`, then log out and in.
+            - In the **Mother** bar choose the serial port and **400000 baud** (CRSF to the Crossfire TX module).
+            - Wiring between the Pi and the Crossfire module is in [`guiTool/pinmap.md`](https://github.com/lmwmason/CanSat-childish/blob/main/guiTool/pinmap.md).
+
+            ## Known limitations
+
+            - First release. It was tested with simulated data and virtual serial ports, **not yet with a real Crossfire module or on a Raspberry Pi**.
+            - Check the Crossfire module's JR-bay pin order before powering it (see `pinmap.md`). The CRSF data pin is assumed to be pin 5.
+            - The CanSat's custom status frame may not pass through every Crossfire link. If it is dropped, attitude, GPS and flight-mode text still arrive.
+            - The Windows build is experimental.
