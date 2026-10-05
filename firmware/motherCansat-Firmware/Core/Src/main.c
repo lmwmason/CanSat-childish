@@ -21,7 +21,10 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <stdio.h>
+#include "imu/imu.h"
+#include "crsf/crsf.h"
+#include "drop/drop_detect.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -31,7 +34,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define IMU_PERIOD_MS    10u    /* 100 Hz sensor loop */
+#define DEBUG_PERIOD_MS  200u
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -49,7 +53,8 @@ UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart6;
 
 /* USER CODE BEGIN PV */
-
+static Imu        imu;
+static DropDetect drop;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -104,7 +109,17 @@ int main(void)
   MX_USART2_UART_Init();
   MX_USART6_UART_Init();
   /* USER CODE BEGIN 2 */
+  uint8_t imuCount = imu_init(&imu, &hi2c1);
+  imu_calibrate_gyro(&imu, 1000);      /* keep the board still for 1 s at boot */
+  crsf_init(&huart6);
+  drop_init(&drop);
 
+  char msg[96];
+  int n = snprintf(msg, sizeof(msg), "boot: %u IMU(s) ok\r\n", imuCount);
+  HAL_UART_Transmit(&huart2, (uint8_t *)msg, (uint16_t)n, 50);
+
+  uint32_t nextImuMs = HAL_GetTick();
+  uint32_t nextDebugMs = nextImuMs;
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -114,6 +129,26 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    uint32_t now = HAL_GetTick();
+
+    if ((int32_t)(now - nextImuMs) >= 0) {
+      nextImuMs += IMU_PERIOD_MS;
+      if (imu_update(&imu, now)) {
+        drop_update(&drop, imu.accelMag, crsf_aux1_on(now), now);
+      }
+      HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,
+                        drop_is_dropping(&drop) ? GPIO_PIN_SET : GPIO_PIN_RESET);
+    }
+
+    if ((int32_t)(now - nextDebugMs) >= 0) {
+      nextDebugMs += DEBUG_PERIOD_MS;
+      int len = snprintf(msg, sizeof(msg),
+                         "acc=%.2f yaw=%.1f imu=%u aux1=%u(%u) drop=%u\r\n",
+                         (double)imu.accelMag, (double)imu.yawDeg,
+                         imu_sensor_count(&imu), crsf_aux1_on(now),
+                         crsf_get_channel(CRSF_AUX1_CHANNEL), drop_is_dropping(&drop));
+      HAL_UART_Transmit(&huart2, (uint8_t *)msg, (uint16_t)len, 50);
+    }
   }
   /* USER CODE END 3 */
 }
