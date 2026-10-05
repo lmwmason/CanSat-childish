@@ -4,7 +4,8 @@
 #
 #   cd guiTool && pyinstaller cansat_gui.spec --noconfirm && tools/make_appimage.sh
 #
-# Env: DIST (default dist/CanSatGroundStation)  OUT (default build)  ARCH (default uname -m)
+# Env: DIST (default dist/CanSatGroundStation)  OUT (default build)  ARCH (x86_64 | aarch64, default uname -m)
+#      MKSQUASHFS (default mksquashfs)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ARCH="${ARCH:-$(uname -m)}"
@@ -43,8 +44,17 @@ img = img.scaled(256, 256, Qt.AspectRatioMode.KeepAspectRatio, Qt.Transformation
 assert img.save(sys.argv[1]), "could not write icon"
 PY
 
-TOOL="$WORK/appimagetool"
-curl -fsSL -o "$TOOL" "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${ARCH}.AppImage"
-chmod +x "$TOOL"
-ARCH="$ARCH" "$TOOL" --appimage-extract-and-run "$APPDIR" "$OUT/CanSatGroundStation-${ARCH}.AppImage"
+# An AppImage is just: runtime executable + squashfs image of the AppDir. Building it by hand means
+# no downloaded tool has to be *executed* (appimagetool does not run under QEMU arm64 emulation).
+case "$ARCH" in
+    x86_64|aarch64) ;;
+    *) echo "unsupported ARCH '$ARCH' (use x86_64 or aarch64)" >&2; exit 1 ;;
+esac
+MKSQUASHFS="${MKSQUASHFS:-mksquashfs}"
+command -v "$MKSQUASHFS" >/dev/null || { echo "mksquashfs not found (apt install squashfs-tools)" >&2; exit 1; }
+
+curl -fsSL -o "$WORK/runtime" "https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-${ARCH}"
+"$MKSQUASHFS" "$APPDIR" "$WORK/app.squashfs" -root-owned -noappend -comp zstd -quiet
+cat "$WORK/runtime" "$WORK/app.squashfs" > "$OUT/CanSatGroundStation-${ARCH}.AppImage"
+chmod +x "$OUT/CanSatGroundStation-${ARCH}.AppImage"
 echo "built $OUT/CanSatGroundStation-${ARCH}.AppImage"
