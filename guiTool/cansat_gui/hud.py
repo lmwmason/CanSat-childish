@@ -177,7 +177,7 @@ class HUD(QWidget):
 
         # --- side tapes ----------------------------------------------------
         th = h * 0.50
-        self._tape(p, 10, 62, cy, th, self.wheel, 500, 0.06, "RW rpm", "{:.0f}", False)
+        self._tape(p, 10, 62, cy, th, self.wheel, 20, 1.2, "RW %", "{:.0f}", False)
         self._tape(p, w - 72, 62, cy, th, self.gmag, 0.5, 70, "G", "{:.2f}", True)
 
         # --- bottom bar ----------------------------------------------------
@@ -219,7 +219,7 @@ class HUD(QWidget):
 
 
 class Dial(QWidget):
-    """Round gauge with a needle (reaction-wheel rpm)."""
+    """Round gauge with a needle (reaction-wheel command)."""
 
     def __init__(self, title: str, vmin: float, vmax: float, unit: str = "", parent=None):
         super().__init__(parent)
@@ -276,7 +276,7 @@ class Dial(QWidget):
 
 
 class VehicleView(QWidget):
-    """Top-view of the mother: wings fold out, parachute canopy opens."""
+    """Top-view of the mother: wings fold out, the door lid opens."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -339,30 +339,22 @@ class VehicleView(QWidget):
         p.setFont(self.font())
         p.drawText(QRectF(0, h - 22, w * 0.56, 20), Qt.AlignmentFlag.AlignCenter, "WINGS")
 
-        # --- parachute (right half) ---
+        # --- door (right half): box with a hinged lid; self.chute == 2 means open ---
         px, py = w * 0.78, h * 0.62
-        deployed = self.chute == 2
-        col = QColor(theme.RED if deployed else theme.AMBER if self.chute == 1 else theme.MUTED)
-        if deployed:
-            r = min(w * 0.17, h * 0.34)
-            path = QPainterPath()
-            path.moveTo(px - r, py - h * 0.2)
-            path.arcTo(QRectF(px - r, py - h * 0.2 - r, 2 * r, 2 * r), 180, -180)
-            path.closeSubpath()
-            p.setPen(QPen(WHITE, 1.5))
-            p.setBrush(col)
-            p.drawPath(path)
-            for dx in (-r, -r / 3, r / 3, r):
-                p.drawLine(QPointF(px + dx, py - h * 0.2), QPointF(px, py))
-        else:
-            p.setPen(QPen(col, 2))
-            p.setBrush(QColor(col.red(), col.green(), col.blue(), 50))
-            p.drawRoundedRect(QRectF(px - 22, py - 30, 44, 24), 6, 6)
+        opened = self.chute == 2
+        col = QColor(theme.ORANGE if opened else theme.MUTED)
         p.setPen(QPen(QColor("#0b1330"), 2))
         p.setBrush(QColor("#dfe7fb"))
-        p.drawRoundedRect(QRectF(px - 9, py, 18, 26), 5, 5)
+        p.drawRoundedRect(QRectF(px - 24, py - 6, 48, 38), 5, 5)
+        p.save()
+        p.translate(px - 24, py - 6)                      # hinge on the left edge
+        p.rotate(-70 if opened else 0)
+        p.setPen(QPen(col, 2))
+        p.setBrush(QColor(col.red(), col.green(), col.blue(), 90))
+        p.drawRoundedRect(QRectF(0, -9, 48, 9), 3, 3)
+        p.restore()
         p.setPen(col)
-        p.drawText(QRectF(w * 0.56, h - 22, w * 0.44, 20), Qt.AlignmentFlag.AlignCenter, "PARACHUTE")
+        p.drawText(QRectF(w * 0.56, h - 22, w * 0.44, 20), Qt.AlignmentFlag.AlignCenter, "DOOR")
 
 
 class LivePlot(QWidget):

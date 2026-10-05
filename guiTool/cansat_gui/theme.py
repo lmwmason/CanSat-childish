@@ -20,6 +20,13 @@ STATE_COLORS = {
     "STANDBY": BLUE,
     "GLIDE": ORANGE,
     "LANDED": ACCENT,
+    "IDLE": MUTED,
+    "WAIT": AMBER,
+    "STAB": BLUE,
+    "SPIN": ORANGE,
+    "OPEN": RED,
+    "REST": BLUE,
+    "WING": ACCENT,
 }
 
 QSS = f"""
