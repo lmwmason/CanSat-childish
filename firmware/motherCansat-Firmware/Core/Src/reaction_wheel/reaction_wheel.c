@@ -76,6 +76,12 @@ void rw_turn_by(ReactionWheel *rw, float currentYawDeg, float deltaDeg)
     rw_turn_to(rw, currentYawDeg + deltaDeg);
 }
 
+void rw_spin(ReactionWheel *rw, float command)
+{
+    rw->mode = RW_SPIN;
+    apply(rw, command);
+}
+
 uint8_t rw_is_turning(const ReactionWheel *rw)
 {
     return rw->mode == RW_TURN_FAST;
@@ -83,7 +89,7 @@ uint8_t rw_is_turning(const ReactionWheel *rw)
 
 float rw_update(ReactionWheel *rw, float yawDeg, float dt)
 {
-    if (rw->mode == RW_OFF) return rw->command;
+    if (rw->mode == RW_OFF || rw->mode == RW_SPIN) return rw->command;
 
     float error = rw_wrap_deg(rw->targetYawDeg - yawDeg);
     float absErr = error < 0.0f ? -error : error;

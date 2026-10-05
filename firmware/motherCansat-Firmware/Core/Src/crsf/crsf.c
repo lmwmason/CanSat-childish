@@ -18,7 +18,7 @@ static uint8_t g_len;       /* expected length of type+payload+crc */
 static uint8_t g_pos;
 static uint8_t g_state;     /* 0 = wait addr, 1 = wait len, 2 = body */
 
-static uint8_t crc8(const uint8_t *p, uint8_t n)
+uint8_t crsf_crc8(const uint8_t *p, uint8_t n)
 {
     uint8_t crc = 0;
     while (n--) {
@@ -58,7 +58,7 @@ static void feed(uint8_t b)
         g_buf[g_pos++] = b;
         if (g_pos >= g_len) {
             /* g_buf = type, payload..., crc */
-            if (crc8(g_buf, (uint8_t)(g_len - 1)) == g_buf[g_len - 1] &&
+            if (crsf_crc8(g_buf, (uint8_t)(g_len - 1)) == g_buf[g_len - 1] &&
                 g_buf[0] == CRSF_TYPE_RC && g_len == CRSF_RC_PAYLOAD_LEN + 2) {
                 decode_channels(&g_buf[1]);
                 g_lastFrameMs = HAL_GetTick();
@@ -68,6 +68,19 @@ static void feed(uint8_t b)
         }
         break;
     }
+}
+
+void crsf_send_frame(uint8_t type, const uint8_t *payload, uint8_t payloadLen)
+{
+    uint8_t f[CRSF_MAX_FRAME_LEN + 2];
+    if (!g_huart || payloadLen > CRSF_MAX_FRAME_LEN - 2) return;
+
+    f[0] = CRSF_ADDR_FC;                 /* telemetry from the flight controller */
+    f[1] = (uint8_t)(payloadLen + 2);    /* type + payload + crc */
+    f[2] = type;
+    for (uint8_t i = 0; i < payloadLen; i++) f[3 + i] = payload[i];
+    f[3 + payloadLen] = crsf_crc8(&f[2], (uint8_t)(payloadLen + 1));
+    HAL_UART_Transmit(g_huart, f, (uint16_t)(payloadLen + 4), 5);
 }
 
 void crsf_init(UART_HandleTypeDef *huart)

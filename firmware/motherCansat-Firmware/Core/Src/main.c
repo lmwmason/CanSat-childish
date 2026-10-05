@@ -24,7 +24,19 @@
 #include <stdio.h>
 #include "imu/imu.h"
 #include "crsf/crsf.h"
+#include "crsf/crsf_telemetry.h"
 #include "drop/drop_detect.h"
+#include "reaction_wheel/reaction_wheel.h"
+#include "wheel_motor/wheel_motor.h"
+#include "door/door.h"
+#include "wings/wings.h"
+#include "soft_pwm/soft_pwm.h"
+#include "elevon/elevon.h"
+#include "gps/gps.h"
+#include "nav/nav.h"
+#include "landing/landing_detect.h"
+#include "indicator/indicator.h"
+#include "mission/mission.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -48,6 +60,7 @@ I2C_HandleTypeDef hi2c1;
 
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim5;
+TIM_HandleTypeDef htim11;
 
 UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart6;
@@ -55,6 +68,13 @@ UART_HandleTypeDef huart6;
 /* USER CODE BEGIN PV */
 static Imu        imu;
 static DropDetect drop;
+static ReactionWheel rw;
+static Mission    mission;
+static Elevon     elevon;
+static Gps        gps;
+static Nav        nav;
+static LandingDetect landing;
+static CrsfTelemetryData tlm;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -65,6 +85,7 @@ static void MX_TIM1_Init(void);
 static void MX_TIM5_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_USART6_UART_Init(void);
+static void MX_TIM11_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -108,13 +129,24 @@ int main(void)
   MX_TIM5_Init();
   MX_USART2_UART_Init();
   MX_USART6_UART_Init();
+  MX_TIM11_Init();
   /* USER CODE BEGIN 2 */
   uint8_t imuCount = imu_init(&imu, &hi2c1);
   imu_calibrate_gyro(&imu, 1000);      /* keep the board still for 1 s at boot */
   crsf_init(&huart6);
   drop_init(&drop);
+  wheel_motor_init(&htim1);
+  door_init(&htim5);
+  wings_init(&htim5);
+  soft_pwm_init(&htim5);     /* PC8/PC9 elevon servos, driven from TIM5 interrupts */
+  elevon_init(&elevon);
+  gps_init(&gps, &hi2c1);
+  nav_init(&nav);
+  landing_init(&landing);
+  rw_init(&rw, wheel_motor_set);
+  mission_init(&mission);
 
-  char msg[96];
+  char msg[192];
   int n = snprintf(msg, sizeof(msg), "boot: %u IMU(s) ok\r\n", imuCount);
   HAL_UART_Transmit(&huart2, (uint8_t *)msg, (uint16_t)n, 50);
 
@@ -130,23 +162,62 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
     uint32_t now = HAL_GetTick();
+    gps_poll(&gps, now);
+    crsf_telemetry_update(&tlm, now);
+    indicator_update(drop_is_dropping(&drop), landing_is_landed(&landing), now);
 
     if ((int32_t)(now - nextImuMs) >= 0) {
       nextImuMs += IMU_PERIOD_MS;
       if (imu_update(&imu, now)) {
         drop_update(&drop, imu.accelMag, crsf_aux1_on(now), now);
+        mission_update(&mission, &rw, drop_is_dropping(&drop),
+                       imu.yawDeg, imu.fused.gz, now);
+        rw_update(&rw, imu.yawDeg, IMU_PERIOD_MS * 0.001f);
+
+        /* home = GPS position where the drop was detected */
+        if (!drop_is_dropping(&drop)) nav_clear_home(&nav);
+        else if (!nav.homeSet && gps_has_fix(&gps, now)) nav_set_home(&nav, gps.lat, gps.lon);
+        nav_update(&nav, &gps, imu.fused.gz, IMU_PERIOD_MS * 0.001f, now);
+
+        elevon_update(&elevon, imu.rollDeg, imu.pitchDeg, nav.rollTargetDeg,
+                      IMU_PERIOD_MS * 0.001f, now, wings_are_ejected());
       }
-      HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,
-                        drop_is_dropping(&drop) ? GPIO_PIN_SET : GPIO_PIN_RESET);
+      landing_update(&landing, drop_is_dropping(&drop), imu.accelMag,
+                     imu.fused.gx, imu.fused.gy, imu.fused.gz,
+                     gps_has_fix(&gps, now), gps.speedMs, now);
+
+      /* snapshot for the CRSF telemetry downlink */
+      tlm.rollDeg = imu.rollDeg;  tlm.pitchDeg = imu.pitchDeg;  tlm.yawDeg = imu.yawDeg;
+      tlm.lat = gps.lat;  tlm.lon = gps.lon;  tlm.altM = gps.altM;
+      tlm.speedMs = gps.speedMs;  tlm.courseDeg = gps.courseDeg;  tlm.satellites = gps.satellites;
+      tlm.missionState = (uint8_t)mission.state;  tlm.missionName = mission_state_name(mission.state);
+      tlm.elevonMode = (uint8_t)elevon.mode;      tlm.elevonName = elevon_mode_name(elevon.mode);
+      tlm.flags = (uint8_t)((drop_is_dropping(&drop) ? CRSF_TLM_FLAG_DROPPING : 0) |
+                            (landing_is_landed(&landing) ? CRSF_TLM_FLAG_LANDED : 0) |
+                            (wings_are_ejected() ? CRSF_TLM_FLAG_WINGS : 0) |
+                            (door_is_open() ? CRSF_TLM_FLAG_DOOR : 0) |
+                            (gps_has_fix(&gps, now) ? CRSF_TLM_FLAG_GPS_FIX : 0) |
+                            (crsf_aux1_on(now) ? CRSF_TLM_FLAG_AUX1 : 0) |
+                            (imu.disagree ? CRSF_TLM_FLAG_IMU_DISAGREE : 0) |
+                            (nav.active ? CRSF_TLM_FLAG_NAV_ACTIVE : 0));
+      tlm.imuCount = imu_sensor_count(&imu);
+      tlm.accelMag = imu.accelMag;  tlm.yawRateDps = imu.fused.gz;
+      tlm.wheelCmd = rw.command;    tlm.rollTargetDeg = nav.rollTargetDeg;
+      tlm.navDistM = nav.distM;     tlm.desiredCourseDeg = nav.desiredCourseDeg;
+      tlm.leftUs = elevon.leftUs;   tlm.rightUs = elevon.rightUs;
     }
 
     if ((int32_t)(now - nextDebugMs) >= 0) {
       nextDebugMs += DEBUG_PERIOD_MS;
       int len = snprintf(msg, sizeof(msg),
-                         "acc=%.2f yaw=%.1f imu=%u aux1=%u(%u) drop=%u\r\n",
+                         "acc=%.2f yaw=%.1f imu=%u aux1=%u(%u) drop=%u mis=%s ev=%s r=%.0f p=%.0f gps=%u/%u nav=%u d=%.0f land=%u\r\n",
                          (double)imu.accelMag, (double)imu.yawDeg,
                          imu_sensor_count(&imu), crsf_aux1_on(now),
-                         crsf_get_channel(CRSF_AUX1_CHANNEL), drop_is_dropping(&drop));
+                         crsf_get_channel(CRSF_AUX1_CHANNEL), drop_is_dropping(&drop),
+                         mission_state_name(mission.state), elevon_mode_name(elevon.mode),
+                         (double)imu.rollDeg, (double)imu.pitchDeg,
+                         gps_has_fix(&gps, now), gps.satellites, nav.active, (double)nav.distM, landing_is_landed(&landing));
+      if (len > (int)sizeof(msg) - 1) len = (int)sizeof(msg) - 1;
       HAL_UART_Transmit(&huart2, (uint8_t *)msg, (uint16_t)len, 50);
     }
   }
@@ -381,6 +452,52 @@ static void MX_TIM5_Init(void)
 }
 
 /**
+  * @brief TIM11 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM11_Init(void)
+{
+
+  /* USER CODE BEGIN TIM11_Init 0 */
+
+  /* USER CODE END TIM11_Init 0 */
+
+  TIM_OC_InitTypeDef sConfigOC = {0};
+
+  /* USER CODE BEGIN TIM11_Init 1 */
+
+  /* USER CODE END TIM11_Init 1 */
+  htim11.Instance = TIM11;
+  htim11.Init.Prescaler = 83;
+  htim11.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim11.Init.Period = 19999;
+  htim11.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim11.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim11) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_Init(&htim11) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 1500;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_PWM_ConfigChannel(&htim11, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM11_Init 2 */
+
+  /* USER CODE END TIM11_Init 2 */
+  HAL_TIM_MspPostInit(&htim11);
+
+}
+
+/**
   * @brief USART2 Initialization Function
   * @param None
   * @retval None
@@ -466,7 +583,7 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3
-                          |GPIO_PIN_4, GPIO_PIN_RESET);
+                          |GPIO_PIN_4|GPIO_PIN_8|GPIO_PIN_9, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4|LD2_Pin, GPIO_PIN_RESET);
@@ -481,9 +598,9 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : PC0 PC1 PC2 PC3
-                           PC4 */
+                           PC4 PC8 PC9 */
   GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3
-                          |GPIO_PIN_4;
+                          |GPIO_PIN_4|GPIO_PIN_8|GPIO_PIN_9;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;

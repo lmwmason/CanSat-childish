@@ -15,7 +15,8 @@ typedef void (*RwMotorFn)(float command);
 typedef enum {
     RW_OFF = 0,      /* motor stopped, PID idle */
     RW_HOLD,         /* PID holds target yaw */
-    RW_TURN_FAST     /* full-power fast yaw turn in progress */
+    RW_TURN_FAST,    /* full-power fast yaw turn in progress */
+    RW_SPIN          /* continuous spin at a fixed command (no target) */
 } RwMode;
 
 typedef struct {
@@ -59,6 +60,8 @@ uint8_t rw_is_on(const ReactionWheel *rw);
  * Also turns the wheel on if it was off. */
 void  rw_turn_by(ReactionWheel *rw, float currentYawDeg, float deltaDeg);
 void  rw_turn_to(ReactionWheel *rw, float targetYawDeg);
+/* Spin continuously at the given command (-1..1) until rw_on/rw_off/rw_turn_*. */
+void  rw_spin(ReactionWheel *rw, float command);
 /* 1 while a fast turn is still in progress. */
 uint8_t rw_is_turning(const ReactionWheel *rw);
 

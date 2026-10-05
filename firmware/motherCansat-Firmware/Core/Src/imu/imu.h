@@ -19,6 +19,8 @@ extern "C" {
 #define IMU_ICM_WEIGHT     0.7f      /* ICM-42688 is the quieter sensor, so it counts more */
 #define IMU_RETRY_MS       1000u     /* re-init a failed sensor this often */
 #define IMU_DISAGREE_MS2   1.5f      /* accel magnitudes differing more than this -> flag */
+#define IMU_TILT_ALPHA     0.98f     /* complementary filter: gyro weight for roll/pitch */
+#define IMU_TILT_TRUST_MS2 2.0f      /* accel trusted for tilt only if |mag - g| is below this */
 
 typedef struct {
     Mpu6050  mpu;
@@ -31,6 +33,10 @@ typedef struct {
 
     ImuSample fused;                /* accel m/s^2, gyro deg/s (bias removed) */
     float     accelMag;             /* |fused accel| in m/s^2 */
+    /* Assumed mounting: x forward, y left, z up (az = +g when level).
+     * rollDeg  + = right wing down, pitchDeg + = nose up. */
+    float     rollDeg, pitchDeg;
+    uint8_t   tiltInit;
     float     yawDeg;               /* gyro-integrated yaw, -180..180, drifts (no magnetometer) */
     uint8_t   disagree;             /* 1 if the two accelerometers disagree */
     uint32_t  lastTickMs;

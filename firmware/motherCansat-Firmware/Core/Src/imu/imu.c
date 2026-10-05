@@ -1,6 +1,8 @@
 #include "imu.h"
 #include <math.h>
 
+#define RAD2DEG 57.2957795f
+
 static void try_init_mpu(Imu *imu, uint32_t now)
 {
     imu->mpuOk = (mpu6050_init(&imu->mpu, imu->hi2c, IMU_MPU_ADDR) == HAL_OK);
@@ -90,6 +92,23 @@ uint8_t imu_update(Imu *imu, uint32_t nowMs)
 
     if (dt > 0.0f && dt < 0.5f)
         imu->yawDeg = wrap180(imu->yawDeg + imu->fused.gz * dt);
+
+    /* roll / pitch: complementary filter (gyro integration + accel tilt) */
+    const ImuSample *f = &imu->fused;
+    float accRoll  = atan2f(f->ay, f->az) * RAD2DEG;
+    float accPitch = atan2f(f->ax, sqrtf(f->ay * f->ay + f->az * f->az)) * RAD2DEG;
+    if (!imu->tiltInit) {
+        imu->rollDeg = accRoll;
+        imu->pitchDeg = accPitch;
+        imu->tiltInit = 1;
+    } else if (dt > 0.0f && dt < 0.5f) {
+        imu->rollDeg  += f->gx * dt;       /* roll rate  =  gx */
+        imu->pitchDeg += -f->gy * dt;      /* pitch rate = -gy */
+        if (fabsf(imu->accelMag - IMU_GRAVITY) < IMU_TILT_TRUST_MS2) {
+            imu->rollDeg  = IMU_TILT_ALPHA * imu->rollDeg  + (1.0f - IMU_TILT_ALPHA) * accRoll;
+            imu->pitchDeg = IMU_TILT_ALPHA * imu->pitchDeg + (1.0f - IMU_TILT_ALPHA) * accPitch;
+        }
+    }
     return 1;
 }
 

@@ -16,8 +16,13 @@ extern "C" {
 #define CRSF_SWITCH_ON_RAW   1400       /* raw 172..1811; >1400 (~1755 us) counts as "on" */
 #define CRSF_LINK_TIMEOUT_MS 500u
 
+uint8_t  crsf_crc8(const uint8_t *p, uint8_t n);
+
 /* Starts reception on the given UART (enables the RXNE interrupt and USART IRQ). */
 void     crsf_init(UART_HandleTypeDef *huart);
+
+/* Sends one complete CRSF frame (addr, len, type, payload, crc) to the receiver. Blocking, <1 ms. */
+void     crsf_send_frame(uint8_t type, const uint8_t *payload, uint8_t payloadLen);
 
 /* Raw channel value 172..1811 (992 = center), channel is 1..16. */
 uint16_t crsf_get_channel(uint8_t channel);
