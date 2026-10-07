@@ -155,6 +155,7 @@ firmware/
   childCansat-Firmware/    PlatformIO project of the child CanSat
     src/                   main, boot, mission, sensors, storage (EEPROM log), comm, ui, core, config
     lib/                   bmp280, dht11 and mpu6050 drivers
+    pinmap.md              Pin assignments of the child
   motherCansat-Firmware/   STM32CubeMX project of the mother CanSat
     Core/Src/              main.c and the application modules:
                              imu, gps, nav, crsf, drop, mission, reaction_wheel, pid,

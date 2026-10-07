@@ -10,6 +10,11 @@ const int yellowLed = 6;
 const int redLed = 7;
 const int blueLed = 8;
 
+// Only the yellow LED (D6, a PWM pin) is fitted, and it has no series resistor. It is driven with
+// analogWrite() so the average current stays low (0-255, 25 is about 10 %). PWM does NOT limit the
+// current while the pin is on, so keep this low. Raise it only if the LED is too dim.
+const uint8_t yellowLedLevel = 25;
+
 const uint32_t deployConfirmMs = 1500;
 
 const uint32_t imuPeriodMs = 10;

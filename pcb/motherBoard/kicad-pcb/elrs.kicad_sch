@@ -5588,21 +5588,6 @@
 		(uuid "ffe67889-69b2-4b8b-bca6-04c2a173ed70")
 	)
 	(label "GND"
-		(at 134.62 62.23 0)
-		(effects (font (size 1.27 1.27)) (justify left bottom))
-		(uuid "6065f4ef-983e-4c8d-b2cd-b5f2b9e06420")
-	)
-	(label "GND"
-		(at 107.95 36.83 0)
-		(effects (font (size 1.27 1.27)) (justify left bottom))
-		(uuid "693772ea-2ac1-4f74-88f6-9903ca3ed7f9")
-	)
-	(label "GND"
-		(at 232.41 116.205 0)
-		(effects (font (size 1.27 1.27)) (justify left bottom))
-		(uuid "aa66656b-6ad6-4968-9b0b-d9612672e6bf")
-	)
-	(label "GND"
 		(at 218.44 128.905 0)
 		(effects
 			(font
@@ -5792,6 +5777,16 @@
 		)
 		(uuid "5ffb6953-70ef-4c24-b791-10ece1526a27")
 	)
+	(label "GND"
+		(at 134.62 62.23 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "6065f4ef-983e-4c8d-b2cd-b5f2b9e06420")
+	)
 	(label "SCK"
 		(at 85.09 59.69 0)
 		(effects
@@ -5811,6 +5806,16 @@
 			(justify left bottom)
 		)
 		(uuid "68d49974-bc49-4d87-a030-93a7fa8ebeb6")
+	)
+	(label "GND"
+		(at 107.95 36.83 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "693772ea-2ac1-4f74-88f6-9903ca3ed7f9")
 	)
 	(label "ANT1"
 		(at 105.41 57.15 180)
@@ -5961,6 +5966,16 @@
 			(justify left bottom)
 		)
 		(uuid "a9e696f5-0344-4adf-a05d-fd6e894cc9c9")
+	)
+	(label "GND"
+		(at 232.41 116.205 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "aa66656b-6ad6-4968-9b0b-d9612672e6bf")
 	)
 	(label "TX"
 		(at 204.47 113.665 0)

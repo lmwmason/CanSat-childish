@@ -53,7 +53,7 @@ void beepUpdate(uint32_t now)
 
 void setLeds(bool y, bool r, bool b)
 {
-  digitalWrite(yellowLed, y);
+  analogWrite(yellowLed, y ? yellowLedLevel : 0);
   digitalWrite(redLed, r);
   digitalWrite(blueLed, b);
 }

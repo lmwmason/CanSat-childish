@@ -649,7 +649,7 @@
         "uuid": "a481c65d-ef11-4fdc-a101-a827d12731b3"
       }
     ],
-    "used_designators": "H1-4",
+    "used_designators": "JP1,R6,R702,C29,C702-710,#PWR35-40,#PWR43,#PWR69-71,U1,H1-4",
     "variants": []
   },
   "sheets": [
@@ -664,10 +664,6 @@
     [
       "e74d8659-e940-4422-ac81-51f89196345d",
       "sensors"
-    ],
-    [
-      "7f11e8b2-995f-45a4-838a-81ebdccd3875",
-      "Integrated_ELRS"
     ],
     [
       "f40e987f-57ed-4d26-a377-78d7abd5b175",
@@ -687,7 +683,7 @@
     ],
     [
       "f0f3818e-a318-4fa0-aee7-815647a9d5c7",
-      "Safety_Valve_IO"
+      "Battery_Deployment_Sense"
     ]
   ],
   "text_variables": {},

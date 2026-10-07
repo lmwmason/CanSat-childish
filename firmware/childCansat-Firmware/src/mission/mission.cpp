@@ -93,8 +93,8 @@ void warmUp(uint32_t ms)
   while (millis() - start < ms)
   {
     const uint32_t now = millis();
-    digitalWrite(yellowLed, now % 400 < 200);
+    analogWrite(yellowLed, (now % 400 < 200) ? yellowLedLevel : 0);
     beepUpdate(now);
   }
-  digitalWrite(yellowLed, LOW);
+  analogWrite(yellowLed, 0);
 }
