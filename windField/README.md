@@ -13,6 +13,8 @@ python3 -m unittest discover -s windField/tests -v
 
 `demo`는 세 Child의 합성 GPS/기압 CSV, 생성에 사용한 참값과 조건, 계산 결과, CSV 프로파일, PNG 그림, 설정·입력 SHA-256·통계가 담긴 `analysis.json`을 지정한 `log/` 폴더에 저장한다. 결과 폴더를 다르게 지정하면 이전 실험을 덮어쓰지 않는다. `docs/`와 `log/`는 Git에서 제외된다.
 
+`wind_field_3d.html`은 인터넷 연결 없이 브라우저에서 회전·확대할 수 있는 3D 공간 보기다. `wind_field_3d.png`는 정적 미리보기다. 동/북 위치와 고도가 3D 좌표이고, 화살표는 그 지점에서 추정한 **수평 바람**이다. 회색 화살표는 같은 고도 Child 관측점의 무게중심에서 역거리 가중 보간한 값이다. 파일 탐색기에서 HTML을 열거나 `xdg-open log/demo/wind_field_3d.html`을 실행하면 된다.
+
 ## 입력
 
 현재 Child CSV 열을 유지하면서 아래 열을 추가한다.

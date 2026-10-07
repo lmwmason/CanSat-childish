@@ -15,6 +15,7 @@ from pathlib import Path
 import numpy as np
 
 from .core import Config, EARTH_RADIUS_M, G, MissingPositionData, bin_profiles, estimate, read_trajectory
+from .view3d import write_html, write_preview
 
 
 def write_csv(path: Path, rows: list[dict]) -> None:
@@ -183,6 +184,8 @@ def analyze(input_path: Path, output: Path, cfg: Config, truth: Path | None = No
     write_csv(output / "wind_samples.csv", result)
     write_csv(output / "wind_profile.csv", profile)
     _plot(raw, result, profile, output / "wind_field.png", cfg.altitude_bin_m)
+    write_html(result, profile, output / "wind_field_3d.html")
+    write_preview(result, profile, output / "wind_field_3d.png")
     report = {
         "created_utc": datetime.now(timezone.utc).isoformat(),
         "input": str(input_path.resolve()),
