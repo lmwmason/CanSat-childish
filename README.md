@@ -6,6 +6,8 @@
 [![KiCad](https://img.shields.io/badge/KiCad-PCB-314CB0?logo=kicad&logoColor=white)](https://www.kicad.org/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-D22128?logo=apache&logoColor=white)](./LICENSE)
 
+<img src="./guiTool/cansat_gui/logo.png">
+
 CanSat-childish is the open-source code and hardware for a two-tier CanSat
 project by the Space Chamchu team: a **mother CanSat** that is dropped, steadies
 itself with a reaction wheel, spins up, opens a door, ejects its wings and
