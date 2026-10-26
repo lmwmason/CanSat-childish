@@ -19,7 +19,7 @@
 | 13 | `figure_13_local_horizontal_slices` | 각 시험의 중간 GPS 고도 근처 국소 수평 단면 |
 | 14–16 | `figure_14_local_3d_drift_cloud_114` 등 | 기록별 관측 궤적 주변의 반투명 3D 국소 보간 |
 
-보고서용 [분석 방법](METHODS.md)과 [그림 설명](CAPTIONS.md)을 함께 둔다.
+보고서에 바로 넣을 [GPS 위치·하강 궤적 추정 본문](POSITION_ESTIMATION_REPORT.md), [분석 방법](METHODS.md), [그림 설명](CAPTIONS.md)을 함께 둔다.
 
 ## 현재 해석
 
