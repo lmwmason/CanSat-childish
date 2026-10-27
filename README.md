@@ -1,5 +1,7 @@
 # CanSat-childish
 
+새 작업자가 프로젝트 목적과 현재 분석 상태를 빠르게 파악하려면 [프로젝트 인수인계 문서](PROJECT_CONTEXT.md)를 먼저 읽으세요.
+
 [![STM32](https://img.shields.io/badge/STM32-F410RB-03234B?logo=stmicroelectronics&logoColor=white)](https://www.st.com/en/microcontrollers-microprocessors/stm32f410rb.html)
 [![PlatformIO](https://img.shields.io/badge/PlatformIO-ATmega328-F5822A?logo=platformio&logoColor=white)](https://platformio.org/)
 [![PyQt6](https://img.shields.io/badge/PyQt6-Ground%20station-41CD52?logo=qt&logoColor=white)](https://www.riverbankcomputing.com/software/pyqt/)
