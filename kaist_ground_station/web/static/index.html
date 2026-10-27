@@ -1,0 +1,913 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Space Chamchu Integral — Ground Station</title>
+<link rel="icon" type="image/png" href="/logo.png">
+<style>
+:root { color-scheme:dark; --bg:#000; --panel:#05111f; --border:#fff; --text:#fff; --muted:#b0b0b0; --grid:#045956;
+  --button:#514c4b; --button_active:#6e6968; --ok:#0f0; --warn:#ff0; --bad:#f00;
+  --line1:#0ff; --line2:#f00; --line3:#0f0; --line4:#ff0; --on:#005a1f;
+  --font:"Noto Sans CJK KR","NanumGothic",system-ui,sans-serif; --mono:"DejaVu Sans Mono",ui-monospace,monospace;
+  --s:14px; --m:15px; --l:24px; }   /* the whole type scale; derived from [sizes] base at start-up */
+* { box-sizing:border-box; margin:0; padding:0; border-radius:0; }
+html, body { height:100%; background:var(--bg); color:var(--text); font:var(--m)/1.3 var(--font); overflow-x:hidden; overflow-y:auto; }
+body { display:flex; flex-direction:column; gap:4px; padding:4px; min-height:100%; }
+.num, input, select, pre, td { font-variant-numeric:tabular-nums; }
+
+/* connection row */
+#bar img.logo { height:44px; width:auto; display:block; margin:-2px 8px -2px 0; }
+#bar { display:flex; flex-wrap:wrap; align-items:center; gap:4px; border:2px solid var(--border); background:var(--panel); padding:4px; }
+input, select, button { font:inherit; color:var(--text); background:#000; border:1px solid var(--muted); padding:3px 6px; min-height:26px; }
+input[type=checkbox] { min-height:0; width:16px; height:16px; }
+select { appearance:none; -webkit-appearance:none; padding-right:24px; cursor:pointer;
+  background:#000 url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8'><path d='M1 1l5 5 5-5' fill='none' stroke='%23b0b0b0' stroke-width='2'/></svg>") no-repeat right 7px center; }
+select:hover, input:hover { border-color:var(--text); }
+select option { background:#000; color:var(--text); }
+button { background:var(--button); border:1px solid var(--border); font-weight:bold; cursor:pointer; padding:3px 12px; }
+button:hover { background:var(--button_active); }
+button:disabled { color:var(--muted); border-color:var(--muted); cursor:not-allowed; background:#222; }
+label { color:var(--muted); }
+#status { margin-left:auto; font-weight:bold; font-size:calc(var(--m) + 2px); }
+#error { color:var(--bad); font-weight:bold; }
+
+/* phase / elapsed / alarm summary */
+#strip { display:flex; gap:4px; }
+#strip .chip { border:2px solid var(--border); background:var(--panel); padding:2px 10px; font:bold var(--m) var(--mono); white-space:nowrap; }
+#strip .chip small { color:var(--muted); font-weight:normal; margin-right:6px; font-family:var(--font); font-size:var(--s); }
+#strip #almsum { flex:1; overflow:hidden; text-overflow:ellipsis; }
+#strip #almsum.warn { border-color:var(--warn); color:var(--warn); } #strip #almsum.bad { border-color:var(--bad); color:var(--bad); }
+
+/* the six numbers an operator reads during descent */
+#metrics { display:grid; gap:4px; }
+body[data-page=flight] #metrics { grid-template-columns:1fr 1.45fr 1.35fr 1.5fr 1fr 1fr; }
+body[data-page=wind] #metrics { grid-template-columns:1.1fr 1fr 1.25fr 1.5fr 1fr 1fr; }
+.metric { border:2px solid var(--border); background:var(--panel); padding:2px 8px 3px; min-width:0; display:flex; flex-direction:column; }
+.metric .k { color:var(--muted); display:flex; gap:6px; align-items:baseline; white-space:nowrap; }
+.metric .k .hint { margin-left:auto; font:var(--s) var(--mono); }
+.metric .v { font:bold var(--l)/1.1 var(--mono); white-space:nowrap; overflow:hidden; }
+.metric .v small { font-size:var(--s); color:var(--muted); font-weight:normal; }
+.metric .sub { font:var(--s) var(--mono); color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.metric.bad { border-color:var(--bad); } .metric.bad .v { color:var(--bad); }
+.metric.warn { border-color:var(--warn); } .metric.warn .v { color:var(--warn); }
+#driftbox { display:flex; align-items:center; gap:8px; }
+#c-compass { width:54px; height:54px; flex:none; }
+#ground { width:5.5em; padding:0 3px; min-height:20px; }
+
+/* panel grid: 12 columns, explicit placement */
+.grid { display:grid; grid-template-columns:repeat(12, minmax(0,1fr)); gap:4px; flex:1; min-height:600px; position:relative; }
+#grid-wind { grid-template-rows:minmax(0,7fr) minmax(0,5fr) minmax(280px,4fr); }   /* bottom row never below 280px: the checkpoint list must stay visible */
+#grid-flight { grid-template-rows:minmax(0,8fr) minmax(0,6fr) minmax(0,4fr); }
+body[data-page=flight] .wind, body[data-page=wind] .flight { display:none !important; }
+.panel { border:2px solid var(--border); background:var(--panel); display:flex; flex-direction:column; min-width:0; min-height:0; }
+/* wind-field window: 3 rows, everything visible at once */
+#p3d { grid-column:1 / 5; grid-row:1; } #p3dc { grid-column:5 / 9; grid-row:1; } #pmap { grid-column:9 / 13; grid-row:1; }
+#pprof { grid-column:1 / 4; grid-row:2; } #pdrift { grid-column:4 / 8; grid-row:2; } #pdtab { grid-column:8 / 13; grid-row:2; }
+#prawstream { grid-column:1 / 10; grid-row:3; } #pcp { grid-column:10 / 13; grid-row:3; }
+/* flight window: 3 rows + the communication strip */
+#pattitude { grid-column:1 / 4; grid-row:1; } #pcam { grid-column:4 / 8; grid-row:1; } #pqlook { grid-column:8 / 10; grid-row:1; } #palt { grid-column:10 / 13; grid-row:1; }
+#pimu { grid-column:1 / 4; grid-row:2; } #pomega { grid-column:4 / 7; grid-row:2; } #pvel { grid-column:7 / 10; grid-row:2; } #patlm { grid-column:10 / 13; grid-row:2; }
+#pstream { grid-column:1 / 5; grid-row:3; } #praw { grid-column:5 / 9; grid-row:3; } #palarm { grid-column:9 / 13; grid-row:3; }
+
+.panel > h2 { display:flex; gap:10px; align-items:baseline; padding:2px 8px; font-size:var(--m); font-weight:bold; white-space:nowrap; overflow:hidden; }
+.panel > h2 .st { margin-left:auto; color:var(--muted); font:var(--s) var(--mono); font-weight:normal; }
+.legend span { margin-right:8px; font-weight:bold; }
+.panel canvas { flex:1; min-height:0; width:100%; display:block; }
+#c3d { cursor:grab; touch-action:none; }
+.note { font:var(--s) var(--mono); color:var(--muted); padding:0 8px 3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.kv { display:flex; gap:6px; align-items:center; font:var(--s) var(--mono); padding:0 8px; white-space:nowrap; break-inside:avoid; }
+.kv .l { color:var(--muted); flex:1; overflow:hidden; text-overflow:ellipsis; } .kv .r { font-weight:bold; } .kv .u { color:var(--muted); width:2.4em; }
+#raw { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); align-content:start; column-gap:4px; padding:2px 0; overflow-y:auto; overflow-x:hidden; flex:1; min-height:0; }
+
+
+/* SCADA-style status tables */
+table.st { border-collapse:collapse; width:100%; font:var(--s) var(--mono); }
+table.st th { text-align:left; color:var(--muted); font-weight:normal; padding:1px 8px; border-bottom:1px solid var(--grid); position:sticky; top:0; background:var(--panel); }
+table.st td { padding:1px 8px; white-space:nowrap; border-bottom:1px solid #0b2a36; }
+table.st td.n { text-align:right; font-weight:bold; }
+#dtab th, #streams th:nth-child(n+3) { text-align:right; }
+.led { display:inline-block; width:11px; height:11px; border-radius:50%; background:#444; vertical-align:middle; }
+.led.ok { background:var(--ok); } .led.warn { background:var(--warn); } .led.bad { background:var(--bad); }
+tr.a-bad td { color:var(--bad); font-weight:bold; } tr.a-warn td { color:var(--warn); } tr.a-clr td { color:var(--muted); }
+#imgprog { padding:3px 8px 4px; font:var(--s) var(--mono); color:var(--muted); }
+#imgprog .bar { height:8px; border:1px solid var(--muted); margin-top:2px; } #imgprog .bar i { display:block; height:100%; background:var(--line1); }
+.dot { display:inline-block; width:10px; height:10px; border-radius:50%; background:var(--bad); }
+.dot.ok { background:var(--ok); }
+
+/* communication: always visible, never inside the drawer */
+#comm { display:grid; grid-template-columns:minmax(0,5fr) minmax(0,4fr) minmax(0,2fr) minmax(0,3fr); gap:4px; height:clamp(165px, 22vh, 250px); flex:none; }
+#comm .panel > h2 { padding-top:1px; }
+#comm .row { display:flex; flex-wrap:wrap; gap:4px; align-items:center; padding:3px 6px; }
+#comm #term { flex:1; min-width:8em; }
+#tx-state { font-weight:bold; } #tx-state.on { color:var(--bad); }
+pre { font:var(--s)/1.3 var(--mono); padding:4px 8px; overflow:auto; white-space:pre-wrap; word-break:break-all; flex:1; min-height:0; }
+.scroll { overflow:auto; flex:1; min-height:0; }
+#bits { display:grid; grid-template-columns:repeat(8, 1fr); gap:2px; padding:4px; align-content:start; }
+#bits div { border:1px solid var(--grid); text-align:center; font:var(--s) var(--mono); padding:2px 0; color:var(--muted); }
+#bits div.on { background:var(--on); color:var(--text); border-color:var(--ok); font-weight:bold; }
+
+/* one-line event strip */
+#events { display:flex; gap:12px; align-items:center; border:2px solid var(--border); background:var(--panel); padding:3px 8px; font:var(--s) var(--mono); white-space:nowrap; overflow:hidden; }
+#events .m { color:var(--text); overflow:hidden; text-overflow:ellipsis; }
+#events .n { color:var(--muted); overflow:hidden; text-overflow:ellipsis; flex:1; }
+#events .f { color:var(--muted); margin-left:auto; }
+
+.imgbox { position:relative; flex:1; min-height:0; background:#000; display:flex; align-items:center; justify-content:center; }
+.imgbox img { max-width:100%; max-height:100%; object-fit:contain; display:block; }
+.imgbox .empty { position:absolute; color:var(--muted); font:var(--s) var(--mono); }
+#rawstream { font-size:var(--s); white-space:pre-wrap; }
+#cpbtns { display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:3px; padding:3px 4px; flex:none; }
+#cpbtns button { min-height:30px; padding:1px 4px; font-size:var(--s); }
+#cpbtns button.mark { grid-column:1 / -1; }
+#cpbtns button.undo { background:#000; border-color:var(--muted); color:var(--muted); font-weight:normal; }
+#cpbtns button.hit { background:var(--ok); color:#000; border-color:var(--ok); }
+#cplist td.t { color:var(--muted); }
+.row2 { display:flex; gap:8px; align-items:center; margin-left:auto; font:var(--s) var(--font); }
+</style>
+</head>
+<body>
+<div id="bar">
+  <img class="logo" src="/logo.png" alt="Space Chamchu Integral">
+  <label data-t="transport"></label><select id="kind"></select>
+  <label data-t="port"></label><input id="port" list="ports" size="16"><datalist id="ports"></datalist>
+  <label data-t="baud"></label><input id="baud" value="115200" size="7">
+  <button id="connect" data-t="connect"></button><button id="stop" data-t="stop"></button>
+  <label data-t="file"></label><input id="path" size="24" data-tp="filePlaceholder">
+  <button id="replay" data-t="replay"></button><button id="calib" data-t="calibration"></button>
+  <span id="error"></span><span id="status" class="num">—</span>
+</div>
+
+<div id="strip">
+  <span class="chip" id="ph"></span><span class="chip" id="met"></span><span class="chip" id="utc"></span><span class="chip" id="almsum"></span>
+</div>
+
+<div id="metrics">
+  <div class="metric" id="mm-alt"><div class="k"><span data-t="gpsAlt"></span></div><div class="v" id="m-alt">—</div><div class="sub" data-t="gpsAltNote"></div></div>
+  <div class="metric wind" id="mm-rate"><div class="k"><span data-t="rate"></span></div><div class="v" id="m-rate">—</div><div class="sub" id="s-rate">&nbsp;</div></div>
+  <div class="metric flight" id="mm-vel"><div class="k"><span data-t="velocity"></span></div><div class="v" id="m-vel">—</div><div class="sub" id="s-vel">&nbsp;</div></div>
+  <div class="metric flight" id="mm-omega"><div class="k"><span data-t="omega"></span></div><div class="v" id="m-omega">—</div><div class="sub" id="s-omega">&nbsp;</div></div>
+  <div class="metric flight" id="mm-att"><div class="k"><span data-t="attitude"></span></div><div class="v" id="m-att">—</div><div class="sub" data-t="attNote"></div></div>
+  <div class="metric wind" id="mm-drift"><div class="k"><span data-t="drift"></span></div>
+    <div id="driftbox"><canvas id="c-compass"></canvas><div class="v" id="m-drift">—</div></div><div class="sub" id="s-drift">&nbsp;</div></div>
+  <div class="metric wind" id="mm-land"><div class="k"><span data-t="landing"></span><span class="hint"><span data-t="groundAlt"></span> <input id="ground" placeholder="m" inputmode="decimal"></span></div><div class="v" id="m-land">—</div><div class="sub" id="s-land">&nbsp;</div></div>
+  <div class="metric" id="mm-gps"><div class="k"><span data-t="fixSats"></span></div><div class="v" id="m-gps">—</div><div class="sub" id="s-gps">&nbsp;</div></div>
+  <div class="metric" id="mm-link"><div class="k"><span data-t="lastFrame"></span></div><div class="v" id="m-link">—</div><div class="sub" id="s-link">&nbsp;</div></div>
+</div>
+
+<!-- ===== wind-field window ===== -->
+<div class="grid wind" id="grid-wind">
+  <section class="panel" id="p3d"><h2><span data-t="view3d"></span><span class="st" id="st-3d"></span></h2><canvas id="c3d"></canvas><div class="note" data-t="note3dPath"></div></section>
+  <section class="panel" id="p3dc"><h2><span data-t="modeCloud"></span><span class="st" id="st-3dc"></span></h2><canvas id="c3dc"></canvas><div class="note" data-t="note3dCloud"></div></section>
+  <section class="panel" id="pmap"><h2><span data-t="topView"></span><span class="st" id="st-map"></span></h2><canvas id="c-map"></canvas><div class="note" id="note-map"></div></section>
+  <section class="panel" id="pprof"><h2><span data-t="profile"></span><span class="legend"><span style="color:var(--line2)" data-t="east"></span><span style="color:var(--line3)" data-t="north"></span></span><span class="st" data-t="profileUnit"></span></h2><canvas id="c-prof"></canvas></section>
+  <section class="panel" id="pdrift"><h2><span data-t="driftTime"></span><span class="legend"><span style="color:var(--line2)" data-t="east"></span><span style="color:var(--line3)" data-t="north"></span><span style="color:var(--line1)" data-t="speed"></span></span><span class="st" id="st-drift"></span></h2><canvas id="c-drift"></canvas></section>
+  <section class="panel" id="pdtab"><h2><span data-t="driftTable"></span><span class="st" id="st-dtab"></span></h2><div class="scroll"><table class="st" id="dtab"></table></div></section>
+  <section class="panel" id="pcp"><h2><span data-t="cpTitle"></span><span class="st" id="st-cp"></span></h2><div id="cpbtns"></div><div class="scroll"><table class="st" id="cplist"></table></div></section>
+  <section class="panel" id="prawstream"><h2><span data-t="rawStream"></span><span class="st" data-t="rawStreamNote"></span><span class="row2"><input type="checkbox" id="pause"><label for="pause" data-t="pause"></label></span></h2><pre id="rawstream"></pre></section>
+</div>
+
+<!-- ===== flight-control screen ===== -->
+<div class="grid flight" id="grid-flight">
+  <section class="panel" id="pattitude"><h2><span data-t="attView"></span><span class="st" id="st-att"></span></h2><canvas id="c-att"></canvas><div class="note" data-t="attFoot"></div></section>
+  <section class="panel" id="pcam"><h2><span data-t="camPanel"></span><span class="st" id="st-cam"></span></h2><div class="imgbox"><img id="jpeg" alt="" hidden><div class="empty" id="cam-empty"></div></div><div id="imgprog"></div></section>
+  <section class="panel" id="pqlook"><h2 data-t="qlookPanel"></h2><div class="imgbox"><img id="qlook" alt="" hidden><div class="empty" id="qlook-empty"></div></div></section>
+  <section class="panel" id="palt"><h2><span data-t="altTime"></span><span class="st" id="st-alt"></span></h2><canvas id="c-alt"></canvas></section>
+  <section class="panel" id="pimu"><h2><span data-t="imu"></span><span class="legend" id="lg-imu"></span><span class="st" id="st-imu"></span></h2><canvas id="c-imu"></canvas></section>
+  <section class="panel" id="pomega"><h2><span data-t="omegaChart"></span><span class="legend"><span style="color:var(--line2)">X</span><span style="color:var(--line3)">Y</span><span style="color:var(--line1)">Z</span></span><span class="st" id="st-omega"></span></h2><canvas id="c-omega"></canvas></section>
+  <section class="panel" id="pvel"><h2><span data-t="velChart"></span><span class="legend"><span style="color:var(--line1)" data-t="vH"></span><span style="color:var(--line4)" data-t="vV"></span><span style="color:#fff" data-t="v3"></span></span><span class="st" id="st-vel"></span></h2><canvas id="c-vel"></canvas></section>
+  <section class="panel" id="patlm"><h2><span data-t="atlm"></span><span class="legend" id="lg-atlm"></span></h2><canvas id="c-atlm"></canvas></section>
+  <section class="panel" id="praw"><h2><span data-t="rawTelem"></span><span class="st" data-t="freshNote"></span></h2><div id="raw"></div></section>
+  <section class="panel" id="pstream"><h2><span data-t="streams"></span><span class="st" id="st-stream"></span></h2><div class="scroll"><table class="st" id="streams"></table></div></section>
+  <section class="panel" id="palarm"><h2><span data-t="alarms"></span><span class="st" id="st-alarm"></span></h2><div class="scroll"><table class="st" id="alarms"></table></div></section>
+</div>
+
+<div id="comm" class="flight">
+  <section class="panel"><h2><span data-t="terminal"></span><span class="st" data-t="terminalNote"></span></h2>
+    <pre id="terminal"></pre>
+    <div class="row"><input id="term"><input type="checkbox" id="hex"><label for="hex">HEX</label><button id="tsend" data-t="send"></button></div></section>
+  <section class="panel"><h2><span data-t="commands"></span><span class="st" id="tx-state"></span></h2>
+    <div class="row"><input type="checkbox" id="tx"><label for="tx" data-t="txEnable"></label>
+      <label data-t="id"></label><select id="cid"></select><label data-t="value"></label><input id="cval" value="0" size="4">
+      <button id="send" data-t="sendCommand"></button><button id="utc-btn" data-t="sendUtc"></button></div>
+    <div class="note" data-t="cmdHint"></div>
+    <h2 data-t="messages"></h2><pre id="messages"></pre></section>
+  <section class="panel"><h2><span data-t="bits"></span><span class="st" data-t="bitsNote"></span></h2><div class="scroll"><div id="bits"></div></div></section>
+  <section class="panel"><h2 data-t="events"></h2><pre id="notices"></pre></section>
+</div>
+
+<div id="events"><span class="m" id="ev-msg"></span><span class="n" id="ev-note"></span><span class="f num" id="footer"></span></div>
+
+<script src="/i18n.js"></script>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue("--" + n).trim();
+const TY = { s:14, m:15, l:24 };   // type scale (px), set from the --s/--m/--l CSS variables
+const WINDOW_S = 120, CH_WIN = 60, MAXP = 600, VIRIDIS = ["#440154", "#482878", "#3e4989", "#31688e", "#26828e", "#1f9e89", "#35b779", "#6ece58", "#b5de2b", "#fde725"];
+const KINDS = ["GPS", "IMU", "ATLM", "DTLM", "MESSAGE", "IMAGE_SIZE", "IMAGE_PROGRESS", "IMAGE", "QLOOK", "ERROR"];
+const STREAMING = ["GPS", "IMU", "ATLM", "DTLM"];      // sent continuously; the others are event-driven
+const PAGE = location.pathname.startsWith("/wind") ? "wind" : "flight";   // one page, two layouts
+document.body.dataset.page = PAGE;
+let MARKS = [];                       // [service time, label] of recorded checkpoints, drawn on the time charts
+let cfg = null, S = null, busy = false, errTimer = 0, lastDrift = null;
+const view = { yaw: -0.65, pitch: 0.5, zoom: 1 };
+const rateLog = [], alarmState = new Map(), errorLog = [], txLog = [];
+let metStart = null, lastMode = null, cloudCache = { key:null, pts:[] };
+
+/* ---------- text ---------- */
+function applyText() {
+  document.documentElement.lang = LANG;
+  for (const el of document.querySelectorAll("[data-t]")) el.textContent = t(el.dataset.t);
+  for (const el of document.querySelectorAll("[data-tp]")) el.placeholder = t(el.dataset.tp);
+  for (const el of document.querySelectorAll("[data-tt]")) el.title = t(el.dataset.tt);
+}
+const dirName = deg => t("dirs")[Math.round(deg / 45) % 8];
+
+/* ---------- api ---------- */
+async function post(body) {
+  try {
+    const r = await fetch("/api/action", { method:"POST", body:JSON.stringify(body) });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || r.statusText);
+    $("error").textContent = "";
+  } catch (e) {
+    $("error").textContent = e.message;
+    clearTimeout(errTimer); errTimer = setTimeout(() => $("error").textContent = "", 8000);
+  }
+}
+const wire = (id, fn) => $(id).addEventListener("click", () => fn());
+wire("connect", () => post({ name:"connect", kind:$("kind").value, port:$("port").value, baud:$("baud").value }));
+wire("stop", () => { $("tx").checked = false; post({ name:"stop" }); });
+wire("replay", () => post({ name:"replay", path:$("path").value }));
+wire("calib", () => post({ name:"calibration", path:$("path").value }));
+wire("send", () => post({ name:"command", id:$("cid").value, value:$("cval").value }));
+wire("utc-btn", () => post({ name:"time" }));
+wire("tsend", async () => {
+  const text = $("term").value;
+  if (!text) return;
+  await post({ name:"terminal", text, hex:$("hex").checked });
+  if (!$("error").textContent) { txLog.push([S ? S.now : 0, ($("hex").checked ? "[HEX] " : "") + text]); if (txLog.length > 50) txLog.shift(); $("term").value = ""; if (S) update(); }
+});
+$("term").addEventListener("keydown", e => { if (e.key === "Enter" && !$("tsend").disabled) $("tsend").click(); });
+$("tx").addEventListener("change", () => post({ name:"tx", enabled:$("tx").checked }));
+try { $("ground").value = localStorage.getItem("groundAlt") || ""; } catch (e) {}
+$("ground").addEventListener("input", () => { try { localStorage.setItem("groundAlt", $("ground").value); } catch (e) {} if (S) update(); });
+
+/* ---------- helpers ---------- */
+const fmt = (v, d = 1) => v == null || !isFinite(v) ? "—" : v.toFixed(d);
+const hex = c => { c = c.replace("#", ""); if (c.length === 3) c = [...c].map(x => x + x).join(""); return [0, 2, 4].map(i => parseInt(c.substr(i, 2), 16)); };
+function ramp(u) {   // low altitude -> high altitude
+  const a = hex(css("line1")), b = hex(css("line4")), k = Math.min(1, Math.max(0, u));
+  return `rgb(${a.map((x, i) => Math.round(x + (b[i] - x) * k)).join(",")})`;
+}
+function viridis(u) {
+  const k = Math.min(1, Math.max(0, u)) * (VIRIDIS.length - 1), i = Math.min(VIRIDIS.length - 2, Math.floor(k)), f = k - i;
+  const a = hex(VIRIDIS[i]), b = hex(VIRIDIS[i + 1]);
+  return a.map((x, j) => Math.round(x + (b[j] - x) * f));
+}
+function niceTicks(lo, hi, n = 5) {
+  if (!(hi > lo)) hi = lo + 1;
+  const raw = (hi - lo) / n, mag = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => s >= raw);
+  const out = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(+v.toFixed(10));
+  return { ticks: out, step };
+}
+const tickText = (v, step) => step >= 1 ? v.toFixed(0) : v.toFixed(Math.min(4, Math.ceil(-Math.log10(step))));
+const bearing = (e, n) => (Math.atan2(e, n) * 180 / Math.PI + 360) % 360;
+const win = (buf, now, cap = CH_WIN) => buf.filter(p => p[0] >= now - cap);
+
+/* crisp canvas: backing store is sized in device pixels */
+function prepare(cv) {
+  const dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+  const g = cv.getContext("2d");
+  g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+  return { g, w, h };
+}
+const font = size => `${size}px ${getComputedStyle(document.body).fontFamily}`;
+function frame(cv, xlo, xhi, ylo, yhi, o = {}) {
+  const { g, w, h } = prepare(cv);
+  const L = 56, R = 12, T = 8, B = 26;
+  const pw = w - L - R, ph = h - T - B;
+  if (pw < 30 || ph < 30) return null;
+  if (o.equal) {
+    const k = Math.max((xhi - xlo) / pw, (yhi - ylo) / ph), cx = (xlo + xhi) / 2, cy = (ylo + yhi) / 2;
+    xlo = cx - k * pw / 2; xhi = cx + k * pw / 2; ylo = cy - k * ph / 2; yhi = cy + k * ph / 2;
+  }
+  const X = x => L + (x - xlo) / (xhi - xlo) * pw, Y = y => T + ph - (y - ylo) / (yhi - ylo) * ph;
+  g.font = font(TY.s); g.lineWidth = 1;
+  const yt = niceTicks(ylo, yhi, Math.max(2, Math.floor(ph / 38))), xt = niceTicks(xlo, xhi, Math.max(2, Math.floor(pw / 80)));
+  g.strokeStyle = css("grid"); g.fillStyle = css("text");
+  g.textAlign = "right"; g.textBaseline = "middle";
+  for (const v of yt.ticks) { const y = Math.round(Y(v)) + .5; g.beginPath(); g.moveTo(L, y); g.lineTo(L + pw, y); g.stroke(); g.fillText(tickText(v, yt.step), L - 5, y); }
+  g.textAlign = "center"; g.textBaseline = "top";
+  for (const v of xt.ticks) { const x = Math.round(X(v)) + .5; g.beginPath(); g.moveTo(x, T); g.lineTo(x, T + ph); g.stroke(); g.fillText(tickText(v, xt.step) + (o.xunit || ""), x, T + ph + 4); }
+  g.strokeStyle = css("border"); g.strokeRect(L + .5, T + .5, pw, ph);
+  g.save(); g.beginPath(); g.rect(L, T, pw, ph); g.clip();
+  return { g, X, Y, L, T, pw, ph, w, h, done: () => g.restore() };
+}
+function arrow(g, x0, y0, x1, y1, color, width = 2, head = 7) {
+  const a = Math.atan2(y1 - y0, x1 - x0);
+  g.strokeStyle = color; g.fillStyle = color; g.lineWidth = width;
+  g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
+  g.beginPath(); g.moveTo(x1, y1); g.lineTo(x1 - head * Math.cos(a - .45), y1 - head * Math.sin(a - .45));
+  g.lineTo(x1 - head * Math.cos(a + .45), y1 - head * Math.sin(a + .45)); g.closePath(); g.fill();
+}
+function label(g, text, x, y, o = {}) {
+  g.font = font(o.size || TY.s); g.textAlign = o.align || "left"; g.textBaseline = o.base || "middle";
+  g.lineWidth = 3; g.strokeStyle = "#000"; g.strokeText(text, x, y);
+  g.fillStyle = o.color || css("text"); g.fillText(text, x, y);
+}
+function emptyChart(cv, text, color) { const { g, w, h } = prepare(cv); label(g, text, w / 2, h / 2, { align:"center", color:color || css("muted") }); }
+
+/* why the drift panels are empty: "not descending" is a different answer from "not enough data yet" */
+function driftEmptyText(d) {
+  if (d.error) return d.error;
+  return d.descent_rate != null && d.descent_rate < 0.2 ? t("driftNoDescent") : t("driftWait");
+}
+
+/* ---------- derived values ---------- */
+function derived(s) {
+  const d = s.drift, fixes = d.fixes, samples = d.samples;
+  const cur = fixes.length ? fixes[fixes.length - 1] : null;
+  const dr = samples.length ? samples[samples.length - 1] : null;
+  const ground = parseFloat($("ground").value);
+  let land = null;
+  if (cur && dr && isFinite(ground) && d.descent_rate > 0.5 && cur[3] > ground) {
+    const T = (cur[3] - ground) / d.descent_rate;
+    land = { T, e: cur[1] + dr[4] * T, n: cur[2] + dr[5] * T, de: dr[4] * T, dn: dr[5] * T };
+  }
+  return { d, fixes, samples, cur, dr, ground, land };
+}
+
+function drawMarks(f, now, xlo) {
+  const { g } = f;
+  MARKS.forEach(([tm, name], i) => {
+    const x = tm - now;
+    if (x < xlo || x > 0) return;
+    const px = f.X(x);
+    g.setLineDash([5, 4]); g.strokeStyle = "#fff"; g.lineWidth = 1.5;
+    g.beginPath(); g.moveTo(px, f.T); g.lineTo(px, f.T + f.ph); g.stroke(); g.setLineDash([]);
+    g.font = font(TY.s);
+    const fits = px + 6 + g.measureText(name).width <= f.L + f.pw;       // otherwise write it to the left of the line
+    label(g, name, fits ? px + 4 : px - 4, f.T + 12 + (i % 3) * (TY.s + 3), { size:TY.s, align: fits ? "left" : "right" });
+  });
+}
+
+/* ---------- strip charts: value, mean and sigma live in the panel header ---------- */
+function drawSeries(cv, series, now, cap = CH_WIN) {
+  const all = series.flatMap(s => win(s.pts, now, cap).map(p => p[1]));
+  if (!all.length) return emptyChart(cv, t("waitData"));
+  let lo = Math.min(...all), hi = Math.max(...all);
+  const pad = (hi - lo) * .12 || 1; lo -= pad; hi += pad;
+  const first = Math.min(...series.map(s => win(s.pts, now, cap)[0]?.[0] ?? now));
+  const span = Math.max(10, Math.min(cap, now - first));
+  const f = frame(cv, -span, 0, lo, hi, { xunit:"s" });
+  if (!f) return;
+  const { g } = f;
+  for (const s of series) {
+    const pts = win(s.pts, now, cap);
+    if (!pts.length) continue;
+    g.strokeStyle = s.color; g.lineWidth = 2.2; g.lineJoin = "round"; g.beginPath();
+    pts.forEach((p, i) => { const x = f.X(p[0] - now), y = f.Y(p[1]); i ? g.lineTo(x, y) : g.moveTo(x, y); });
+    g.stroke();
+  }
+  drawMarks(f, now, -span);
+  f.done();
+}
+const ATLM_COLORS = () => [css("line1"), css("line2"), css("line3"), css("line4"), "#f0f", "#f80", "#fff", "#08f"];
+
+/* ---------- drift cloud: kernel interpolation of the observed drift (figure_20261026/METHODS.md) ---------- */
+function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let x = Math.imul(a ^ a >>> 15, 1 | a); x = x + Math.imul(x ^ x >>> 7, 61 | x) ^ x; return ((x ^ x >>> 14) >>> 0) / 4294967296; }; }
+function gauss(r) { let u = 0; while (!u) u = r(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * r()); }
+function buildCloud(samples) {
+  const key = samples.length + ":" + (samples.length ? samples[samples.length - 1][0] : 0);
+  if (cloudCache.key === key) return cloudCache.pts;
+  const step = Math.max(1, Math.ceil(samples.length / 80)), src = samples.filter((_, i) => i % step === 0);
+  const sh = 2.5, sv = 5.5, pts = [];       // horizontal / vertical kernel widths (m)
+  src.forEach((s, i) => {
+    const r = mulberry(i * 7919 + 13);       // seeded: the cloud must not shimmer between redraws
+    for (let j = 0; j < 16; j++) {
+      const e = s[1] + gauss(r) * sh, n = s[2] + gauss(r) * sh, z = s[3] + gauss(r) * sv;
+      let w = 0, ve = 0, vn = 0, kmax = 0;
+      for (const q of src) {
+        const k = Math.exp(-((e - q[1]) ** 2 + (n - q[2]) ** 2) / (2 * sh * sh) - (z - q[3]) ** 2 / (2 * sv * sv));
+        w += k; ve += k * q[4]; vn += k * q[5]; if (k > kmax) kmax = k;
+      }
+      if (w > 1e-9) pts.push([e, n, z, Math.hypot(ve / w, vn / w), kmax]);
+    }
+  });
+  cloudCache = { key, pts };
+  return pts;
+}
+
+/* ---------- attitude: IMU fields 0-2 as X/Y/Z Euler angles (the Tk frontend's preview, mapping unverified) ---------- */
+function drawAttitude(cv, imu) {
+  const { g, w, h } = prepare(cv);
+  if (imu.length < 3) { label(g, t("attWait"), w / 2, h / 2, { align:"center", color:css("muted") }); return; }
+  const [rx, ry, rz] = imu.slice(0, 3).map(v => v * Math.PI / 180);
+  const sc = Math.min(w, h) * 0.2;
+  const rot = ([x, y, z], r = [rx, ry, rz]) => {
+    [y, z] = [y * Math.cos(r[0]) - z * Math.sin(r[0]), y * Math.sin(r[0]) + z * Math.cos(r[0])];
+    [x, z] = [x * Math.cos(r[1]) + z * Math.sin(r[1]), -x * Math.sin(r[1]) + z * Math.cos(r[1])];
+    [x, y] = [x * Math.cos(r[2]) - y * Math.sin(r[2]), x * Math.sin(r[2]) + y * Math.cos(r[2])];
+    return [x, y, z];
+  };
+  const scr = p => [w / 2 + sc * (p[0] + 0.4 * p[1]), h / 2 - sc * (p[2] - 0.4 * p[1])];
+  const seg = (a, b, color, wd) => { const A = scr(a), B = scr(b); g.strokeStyle = color; g.lineWidth = wd; g.beginPath(); g.moveTo(A[0], A[1]); g.lineTo(B[0], B[1]); g.stroke(); };
+  const axes = [[[1.9, 0, 0], css("line2"), "X"], [[0, 1.9, 0], css("line3"), "Y"], [[0, 0, 1.9], css("line1"), "Z"]];
+  g.globalAlpha = 0.28;                                   // level reference
+  for (const [v, color] of axes) { const B = scr(v), O = scr([0, 0, 0]); arrow(g, O[0], O[1], B[0], B[1], color, 1.5, 6); }
+  g.globalAlpha = 1;
+  const V = [-1, 1].flatMap(x => [-1, 1].flatMap(y => [-0.5, 0.5].map(z => [x, y, z])));
+  for (let i = 0; i < V.length; i++) for (let j = i + 1; j < V.length; j++) {
+    if (V[i].filter((c, k) => c !== V[j][k]).length === 1) seg(rot(V[i]), rot(V[j]), css("text"), 2);
+  }
+  for (const [v, color, name] of axes) {
+    const B = scr(rot(v)), O = scr([0, 0, 0]);
+    arrow(g, O[0], O[1], B[0], B[1], color, 3, 9);
+    label(g, name, B[0] + 12, B[1], { color, size:TY.m });
+  }
+  label(g, `X ${imu[0].toFixed(1)}°   Y ${imu[1].toFixed(1)}°   Z ${imu[2].toFixed(1)}°`, 10, h - 14, { color:css("line4"), size:TY.m });
+}
+
+/* ---------- 3D view ---------- */
+function draw3D(cv, D, mode, stId) {
+  const { g, w, h } = prepare(cv);
+  const { fixes, samples, cur, land } = D;
+  if (!fixes.length) { label(g, t("noFix"), w / 2, h / 2, { align:"center", color:css("muted") }); return; }
+  const es = fixes.map(p => p[1]), ns = fixes.map(p => p[2]), zs = fixes.map(p => p[3]);
+  if (land) { es.push(land.e); ns.push(land.n); }
+  if (isFinite(D.ground)) zs.push(D.ground);
+  const ce = (Math.min(...es) + Math.max(...es)) / 2, cn = (Math.min(...ns) + Math.max(...ns)) / 2;
+  const H = Math.max(Math.max(...es) - Math.min(...es), Math.max(...ns) - Math.min(...ns), 40) * 1.15;
+  const zlo = Math.min(...zs), zhi = Math.max(...zs), zspan = Math.max(zhi - zlo, 20), zmid = (zlo + zhi) / 2;
+  const ZH = 0.9;
+  const P = (e, n, z) => [(e - ce) / H, (n - cn) / H, (z - zmid) / zspan * ZH];
+  const sy = Math.sin(view.yaw), cy = Math.cos(view.yaw), sp = Math.sin(view.pitch), cp = Math.cos(view.pitch);
+  const unit = p => { const x1 = p[0] * cy - p[1] * sy, y1 = p[0] * sy + p[1] * cy; return [x1, -(p[2] * cp + y1 * sp), y1 * cp - p[2] * sp]; };
+  const hull = [-.5, .5].flatMap(a => [-.5, .5].flatMap(b => [-ZH / 2, ZH / 2].map(c => unit([a, b, c]))));
+  const ux = hull.map(q => q[0]), uy = hull.map(q => q[1]);
+  const bw = Math.max(...ux) - Math.min(...ux), bh = Math.max(...uy) - Math.min(...uy);
+  const cux = (Math.max(...ux) + Math.min(...ux)) / 2, cuy = (Math.max(...uy) + Math.min(...uy)) / 2;
+  const S3 = Math.min((w - 130) / bw, (h - 60) / bh) * view.zoom;      // keeps the whole box on screen
+  const proj = p => { const q = unit(p); return [w / 2 + 20 + (q[0] - cux) * S3, h / 2 - 6 + (q[1] - cuy) * S3]; };
+  const line = (a, b, color, wd = 1) => { const A = proj(a), B = proj(b); g.strokeStyle = color; g.lineWidth = wd; g.beginPath(); g.moveTo(A[0], A[1]); g.lineTo(B[0], B[1]); g.stroke(); };
+  const fl = -ZH / 2, tp = ZH / 2;
+
+  const n = 4;
+  for (let i = 0; i <= n; i++) { const u = -.5 + i / n; line([u, -.5, fl], [u, .5, fl], css("grid")); line([-.5, u, fl], [.5, u, fl], css("grid")); }
+  const corners = [[-.5, -.5], [.5, -.5], [.5, .5], [-.5, .5]];
+  corners.forEach((c, i) => { const d2 = corners[(i + 1) % 4]; line([c[0], c[1], fl], [d2[0], d2[1], fl], css("muted")); line([c[0], c[1], tp], [d2[0], d2[1], tp], css("grid")); line([c[0], c[1], fl], [c[0], c[1], tp], css("grid")); });
+  const sc = corners.reduce((best, c) => { const d2 = proj([c[0], c[1], 0]); return d2[0] < best.x ? { x:d2[0], c } : best; }, { x:1e9, c:corners[0] }).c;
+  const at = niceTicks(zmid - zspan / 2, zmid + zspan / 2, 4);
+  for (const v of at.ticks) { const p = proj([sc[0], sc[1], (v - zmid) / zspan * ZH]); label(g, tickText(v, at.step) + " m", p[0] - 6, p[1], { align:"right", color:css("muted") }); }
+  const nn = proj([0, .5, fl]); label(g, "N", nn[0], nn[1] - 10, { align:"center", color:css("line4"), size:TY.m });
+  const ee = proj([.5, 0, fl]); label(g, "E", ee[0] + 10, ee[1], { color:css("line4"), size:TY.m });
+  label(g, t("grid", (H / n).toFixed(0)), 8, h - 10, { color:css("muted") });
+
+  const pts = fixes.map(p => P(p[1], p[2], p[3]));
+  for (let i = 1; i < pts.length; i++) line([pts[i - 1][0], pts[i - 1][1], fl], [pts[i][0], pts[i][1], fl], "rgba(255,255,255,.22)", 1);
+  const maxV = Math.max(1, ...samples.map(s => Math.hypot(s[4], s[5])));
+
+  if (mode === "cloud") {
+    const cloud = buildCloud(samples).map(c => { const p = P(c[0], c[1], c[2]); return { c, q: proj(p), d: unit(p)[2] }; }).sort((a, b) => b.d - a.d);
+    for (const o of cloud) {
+      const [r, gg, b] = viridis(o.c[3] / maxV), a = 0.12 + 0.5 * Math.min(1, o.c[4]);
+      g.fillStyle = `rgba(${r},${gg},${b},${a})`; g.beginPath(); g.arc(o.q[0], o.q[1], 2.6, 0, 7); g.fill();
+    }
+    for (let i = 1; i < pts.length; i++) line(pts[i - 1], pts[i], "rgba(255,255,255,.85)", 1.6);
+    // colour bar: horizontal drift speed
+    const bx = w - 40, by = h / 2 - 70;
+    for (let i = 0; i < 140; i++) { const [r, gg, b] = viridis(1 - i / 139); g.fillStyle = `rgb(${r},${gg},${b})`; g.fillRect(bx, by + i, 14, 1.2); }
+    g.strokeStyle = css("border"); g.lineWidth = 1; g.strokeRect(bx + .5, by + .5, 14, 140);
+    label(g, maxV.toFixed(1), bx - 4, by + 4, { align:"right" }); label(g, "0", bx - 4, by + 138, { align:"right" });
+    label(g, t("driftSpeed"), bx + 7, by - 12, { align:"center", color:css("muted") });
+  } else {
+    for (let i = 1; i < pts.length; i++) line(pts[i - 1], pts[i], ramp((fixes[i][3] - zlo) / zspan), 3);
+    const pick = samples.length > 12 ? Array.from({ length: 12 }, (_, i) => samples[Math.round(i * (samples.length - 1) / 11)]) : samples;
+    for (const s of pick) {
+      const p = P(s[1], s[2], s[3]), v = Math.hypot(s[4], s[5]) || 1, len = 0.16 * Math.hypot(s[4], s[5]) / maxV;
+      const A = proj(p), B = proj([p[0] + s[4] / v * len, p[1] + s[5] / v * len, p[2]]);
+      arrow(g, A[0], A[1], B[0], B[1], "#fff", 2, 7);
+    }
+  }
+  const c = pts[pts.length - 1];
+  line(c, [c[0], c[1], fl], css("muted"), 1);
+  const st = proj(pts[0]); g.fillStyle = css("line3"); g.beginPath(); g.arc(st[0], st[1], 4, 0, 7); g.fill();
+  const cp2 = proj(c); g.fillStyle = css("line4"); g.beginPath(); g.arc(cp2[0], cp2[1], 6, 0, 7); g.fill(); g.strokeStyle = css("border"); g.lineWidth = 1.5; g.stroke();
+  label(g, `${cur[3].toFixed(0)} m`, cp2[0] + 10, cp2[1] - 8, { color:css("line4"), size:TY.m });
+  if (land) {
+    const L2 = proj(P(land.e, land.n, D.ground)), C2 = proj([c[0], c[1], fl]);
+    g.setLineDash([5, 4]); g.strokeStyle = css("bad"); g.lineWidth = 1.5; g.beginPath(); g.moveTo(C2[0], C2[1]); g.lineTo(L2[0], L2[1]); g.stroke(); g.setLineDash([]);
+    g.strokeStyle = css("bad"); g.lineWidth = 3; g.beginPath(); g.moveTo(L2[0] - 8, L2[1] - 8); g.lineTo(L2[0] + 8, L2[1] + 8); g.moveTo(L2[0] + 8, L2[1] - 8); g.lineTo(L2[0] - 8, L2[1] + 8); g.stroke();
+    label(g, t("landingMark"), L2[0] + 12, L2[1], { color:css("bad") });
+  }
+  $(stId).textContent = `${t("points", fixes.length)} · ${t("altRange", zlo.toFixed(0), zhi.toFixed(0))}`;
+}
+(function interaction() {
+  const both = () => { if (S) { draw3D($("c3d"), lastDrift, "path", "st-3d"); draw3D($("c3dc"), lastDrift, "cloud", "st-3dc"); } };
+  for (const cv of [$("c3d"), $("c3dc")]) {          // dragging either panel turns both: same view of the same flight
+    let drag = null;
+    cv.addEventListener("pointerdown", e => { drag = [e.clientX, e.clientY]; cv.setPointerCapture(e.pointerId); cv.style.cursor = "grabbing"; });
+    cv.addEventListener("pointerup", () => { drag = null; cv.style.cursor = "grab"; });
+    cv.addEventListener("pointermove", e => {
+      if (!drag) return;
+      view.yaw += (e.clientX - drag[0]) * 0.01;
+      view.pitch = Math.max(0.05, Math.min(1.5, view.pitch + (e.clientY - drag[1]) * 0.01));
+      drag = [e.clientX, e.clientY]; both();
+    });
+    cv.addEventListener("wheel", e => { e.preventDefault(); view.zoom = Math.max(.5, Math.min(4, view.zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1))); both(); }, { passive:false });
+    cv.addEventListener("dblclick", () => { view.yaw = -0.65; view.pitch = 0.5; view.zoom = 1; both(); });
+  }
+})();
+
+/* ---------- top-down map ---------- */
+function drawMap(cv, D) {
+  const { fixes, samples, cur, land } = D;
+  if (!fixes.length) return emptyChart(cv, t("noFix"));
+  const es = fixes.map(p => p[1]), ns = fixes.map(p => p[2]);
+  if (land) { es.push(land.e); ns.push(land.n); }
+  const half = Math.max(Math.max(...es) - Math.min(...es), Math.max(...ns) - Math.min(...ns), 40) / 2 * 1.2;
+  const cx = (Math.min(...es) + Math.max(...es)) / 2, cy = (Math.min(...ns) + Math.max(...ns)) / 2;
+  const f = frame(cv, cx - half, cx + half, cy - half, cy + half, { equal:true });
+  if (!f) return;
+  const { g } = f;
+  const zs = fixes.map(p => p[3]), zlo = Math.min(...zs), zspan = Math.max(Math.max(...zs) - zlo, 20);
+  g.lineWidth = 3; g.lineJoin = "round";
+  for (let i = 1; i < fixes.length; i++) { g.strokeStyle = ramp((fixes[i][3] - zlo) / zspan); g.beginPath(); g.moveTo(f.X(fixes[i - 1][1]), f.Y(fixes[i - 1][2])); g.lineTo(f.X(fixes[i][1]), f.Y(fixes[i][2])); g.stroke(); }
+  const pxPerMs = Math.min(40, f.pw / (2 * half) * 5);
+  const pick = samples.length > 14 ? Array.from({ length: 14 }, (_, i) => samples[Math.round(i * (samples.length - 1) / 13)]) : samples;
+  for (const s of pick) arrow(g, f.X(s[1]), f.Y(s[2]), f.X(s[1]) + s[4] * pxPerMs, f.Y(s[2]) - s[5] * pxPerMs, "#fff", 1.8, 6);
+  g.fillStyle = css("line3"); g.beginPath(); g.arc(f.X(fixes[0][1]), f.Y(fixes[0][2]), 5, 0, 7); g.fill();
+  if (land) {
+    g.setLineDash([6, 4]); g.strokeStyle = css("bad"); g.lineWidth = 2; g.beginPath(); g.moveTo(f.X(cur[1]), f.Y(cur[2])); g.lineTo(f.X(land.e), f.Y(land.n)); g.stroke(); g.setLineDash([]);
+    const x = f.X(land.e), y = f.Y(land.n); g.lineWidth = 3; g.beginPath(); g.moveTo(x - 9, y - 9); g.lineTo(x + 9, y + 9); g.moveTo(x + 9, y - 9); g.lineTo(x - 9, y + 9); g.stroke();
+  }
+  g.fillStyle = css("line4"); g.beginPath(); g.arc(f.X(cur[1]), f.Y(cur[2]), 6, 0, 7); g.fill(); g.strokeStyle = css("border"); g.lineWidth = 1.5; g.stroke();
+  f.done();
+  label(f.g, "N ↑", f.L + 8, f.T + 14, { color:css("line4"), size:TY.m });
+  if (land) label(f.g, t("landingMark"), Math.min(f.X(land.e) + 12, f.L + f.pw - 90), f.Y(land.n), { color:css("bad") });
+  const o = D.d.origin;
+  $("st-map").textContent = o ? t("reference", o[0].toFixed(5), o[1].toFixed(5)) : "";
+  $("note-map").textContent = t("topNote") + (land ? t("topNoteLand") : "");
+}
+
+/* ---------- altitude vs time, drift by altitude, drift vs time ---------- */
+function drawAlt(cv, D, now) {
+  const pts = D.fixes.map(p => [p[0] - now, p[3]]).filter(p => p[0] >= -WINDOW_S);
+  if (pts.length < 2) return emptyChart(cv, t("waitGps"));
+  const lo = Math.min(...pts.map(p => p[1])), hi = Math.max(...pts.map(p => p[1])), pad = (hi - lo) * .1 || 1;
+  const f = frame(cv, Math.min(-10, pts[0][0]), 0, lo - pad, hi + pad, { xunit:"s" });
+  if (!f) return;
+  const { g } = f;
+  g.lineWidth = 2.5; g.lineJoin = "round";
+  for (let i = 1; i < pts.length; i++) { g.strokeStyle = ramp((pts[i][1] - lo) / Math.max(hi - lo, 1)); g.beginPath(); g.moveTo(f.X(pts[i - 1][0]), f.Y(pts[i - 1][1])); g.lineTo(f.X(pts[i][0]), f.Y(pts[i][1])); g.stroke(); }
+  if (isFinite(D.ground)) { g.setLineDash([6, 4]); g.strokeStyle = css("bad"); g.beginPath(); g.moveTo(f.L, f.Y(D.ground)); g.lineTo(f.L + f.pw, f.Y(D.ground)); g.stroke(); g.setLineDash([]); }
+  drawMarks(f, now, Math.min(-10, pts[0][0]));
+  f.done();
+  const last = pts[pts.length - 1];
+  label(g, `${last[1].toFixed(1)} m`, f.X(last[0]) - 8, Math.max(f.Y(last[1]) - 10, f.T + 12), { align:"right", color:css("line4"), size:TY.m });
+  $("st-alt").textContent = `${lo.toFixed(0)}–${hi.toFixed(0)} m`;
+}
+function drawProfile(cv, D) {
+  const prof = D.d.profile;
+  if (prof.length < 2) return emptyChart(cv, driftEmptyText(D.d), D.d.error ? css("warn") : null);
+  const vmax = Math.max(1, ...prof.flatMap(p => [Math.abs(p[1]), Math.abs(p[2])])) * 1.15;
+  const zlo = Math.min(...prof.map(p => p[0])) - 2, zhi = Math.max(...prof.map(p => p[0])) + 2;
+  const f = frame(cv, -vmax, vmax, zlo, zhi);
+  if (!f) return;
+  const { g } = f;
+  g.strokeStyle = css("muted"); g.lineWidth = 1.5; g.beginPath(); g.moveTo(f.X(0), f.T); g.lineTo(f.X(0), f.T + f.ph); g.stroke();
+  for (const [idx, color] of [[1, css("line2")], [2, css("line3")]]) {
+    g.strokeStyle = color; g.lineWidth = 2.5; g.lineJoin = "round"; g.beginPath();
+    prof.forEach((p, i) => { const x = f.X(p[idx]), y = f.Y(p[0]); i ? g.lineTo(x, y) : g.moveTo(x, y); });
+    g.stroke();
+    g.fillStyle = color; prof.forEach(p => { g.beginPath(); g.arc(f.X(p[idx]), f.Y(p[0]), 2.5, 0, 7); g.fill(); });
+  }
+  f.done();
+}
+function drawDriftTime(cv, D, now) {
+  const s = D.samples;
+  if (s.length < 2) return emptyChart(cv, driftEmptyText(D.d), D.d.error ? css("warn") : null);
+  const east = s.map(p => [p[0], p[4]]), north = s.map(p => [p[0], p[5]]), spd = s.map(p => [p[0], Math.hypot(p[4], p[5])]);
+  drawSeries(cv, [{ pts:east, color:css("line2") }, { pts:north, color:css("line3") }, { pts:spd, color:css("line1") }], now, WINDOW_S);
+  const last = s[s.length - 1];
+  $("st-drift").textContent = `E ${fmt(last[4], 2)}  N ${fmt(last[5], 2)} ${t("driftTimeUnit")}`;
+}
+
+/* ---------- stream table, alarms, phase ---------- */
+function rateOf(kind, now, counts) {
+  while (rateLog.length > 1 && now - rateLog[0][0] > 6) rateLog.shift();
+  const old = rateLog[0];
+  if (!old || now - old[0] < 1) return null;
+  return ((counts[kind] || 0) - (old[1][kind] || 0)) / (now - old[0]);
+}
+const ledClass = age => age == null ? "" : age < 3 ? "ok" : age < 10 ? "warn" : "bad";
+function renderStreams(s) {
+  const now = s.now;
+  rateLog.push([now, { ...s.counts }]);
+  const kinds = [...KINDS.filter(k => k in s.counts || k in s.seen_age || STREAMING.includes(k)), ...Object.keys(s.counts).filter(k => !KINDS.includes(k))];
+  const rows = kinds.map(k => {
+    const age = s.seen_age[k], r = rateOf(k, now, s.counts);
+    const led = k === "ERROR" ? ((s.counts.ERROR || 0) ? "bad" : "ok") : ledClass(age);
+    return `<tr><td><i class="led ${led}"></i></td><td>${KINDS.includes(k) ? t("s_" + k) : k}</td><td class="n">${age == null ? "—" : age.toFixed(1) + " s"}</td><td class="n">${s.counts[k] || 0}</td><td class="n">${r == null ? "—" : r.toFixed(1) + " /s"}</td></tr>`;
+  }).join("");
+  $("st-stream").textContent = t("streamTotals", (s.rx_bytes / 1024).toFixed(1), s.tx_bytes, s.valid_frames, s.errors, s.discarded);
+  const html = `<tr><th></th><th>${t("colStream")}</th><th>${t("colLast")}</th><th>${t("colTotal")}</th><th>${t("colRate")}</th></tr>${rows}`;
+  if ($("streams").dataset.h !== html) { $("streams").innerHTML = html; $("streams").dataset.h = html; }
+  const [got, total] = s.image_progress;
+  $("imgprog").innerHTML = total ? `${t("jpegProgress", got, total, (100 * got / total).toFixed(0))}<div class="bar"><i style="width:${Math.min(100, 100 * got / total)}%"></i></div>` : t("jpegNone");
+}
+function evalAlarms(s) {
+  const A = cfg.alarms, now = s.now, active = new Map();
+  const raise = (id, level, text) => active.set(id, { level, text });
+  const age = s.link_age_s, live = s.mode !== "IDLE", gps = s.gps || {};
+  if (live) {
+    if (age == null) raise("link", "warn", t("aWait"));
+    else if (A.link_alarm_s && age > A.link_alarm_s) raise("link", "bad", t("aLost", age.toFixed(0)));
+    else if (A.link_warn_s && age > A.link_warn_s) raise("link", "warn", t("aDelay", age.toFixed(1)));
+    if (age != null && age < (A.link_alarm_s || 1e9)) {
+      for (const k of STREAMING) { const a = s.seen_age[k]; if (A.stream_stale_s && a != null && a > A.stream_stale_s) raise("stale-" + k, "warn", t("aStale", t("s_" + k), a.toFixed(0))); }
+    }
+    if ("GPS" in s.seen_age && !gps.fix) raise("nofix", "bad", t("aNoFix"));
+    if (gps.fix && A.min_satellites && gps.satellites < A.min_satellites) raise("sats", "warn", t("aSats", gps.satellites, A.min_satellites));
+    if (gps.fix && A.max_hdop && gps.hdop > A.max_hdop) raise("hdop", "warn", t("aHdop", gps.hdop, A.max_hdop));
+    errorLog.push([now, s.errors]); while (errorLog.length > 1 && now - errorLog[0][0] > 10) errorLog.shift();
+    const burst = s.errors - errorLog[0][1];
+    if (A.error_burst && burst >= A.error_burst) raise("errors", "warn", t("aErrors", burst));
+  }
+  for (const [id, a] of active) {
+    const prev = alarmState.get(id);
+    if (!prev || prev.cleared != null) alarmState.set(id, { ...a, since: now, cleared: null });
+    else Object.assign(prev, a);
+  }
+  for (const [id, a] of alarmState) if (!active.has(id) && a.cleared == null) a.cleared = now;
+  for (const [id, a] of [...alarmState]) if (a.cleared != null && now - a.cleared > 600) alarmState.delete(id);
+  const list = [...alarmState.values()].sort((x, y) => (x.cleared != null) - (y.cleared != null) || (y.level === "bad") - (x.level === "bad") || y.since - x.since);
+  const nBad = list.filter(a => a.cleared == null && a.level === "bad").length, nWarn = list.filter(a => a.cleared == null && a.level === "warn").length;
+  const top = list.find(a => a.cleared == null);
+  const sum = $("almsum");
+  sum.className = "chip " + (nBad ? "bad" : nWarn ? "warn" : "");
+  sum.textContent = top ? t("alarmSummary", nBad + nWarn, top.text) : t(live ? "noAlarms" : "noAlarmsStopped");
+  $("st-alarm").textContent = t("alarmCounts", nBad, nWarn, list.filter(a => a.cleared != null).length);
+  const html = `<tr><th>${t("colState")}</th><th>${t("colLevel")}</th><th>${t("colSince")}</th><th>${t("colMessage")}</th></tr>` + (list.length ? list.map(a => {
+    const cls = a.cleared != null ? "a-clr" : a.level === "bad" ? "a-bad" : "a-warn";
+    const since = a.cleared != null ? t("clearedAgo", (now - a.cleared).toFixed(0)) : `${(now - a.since).toFixed(0)} s`;
+    return `<tr class="${cls}"><td><i class="led ${a.cleared != null ? "" : a.level}"></i> ${t(a.cleared != null ? "cleared" : "active")}</td><td>${t(a.level === "bad" ? "lvAlarm" : "lvWarn")}</td><td>${since}</td><td>${a.text}</td></tr>`;
+  }).join("") : `<tr><td colspan="4" style="color:var(--muted)">${t("none")}</td></tr>`);
+  if ($("alarms").dataset.h !== html) { $("alarms").innerHTML = html; $("alarms").dataset.h = html; }
+}
+function renderStrip(s, D) {
+  const rate = D.d.descent_rate, gps = s.gps || {};
+  let phase;
+  if (s.mode === "IDLE") phase = "phStopped";
+  else if (!gps.fix) phase = "phNoFix";
+  else if (rate == null) phase = "phEval";
+  else if (rate > 1.5) phase = "phDescent";
+  else if (rate < -1.5) phase = "phAscent";
+  else phase = "phLevel";
+  $("ph").innerHTML = `<small>${t("phase")}</small>${t(phase)}`;
+  if (s.mode !== lastMode) { lastMode = s.mode; metStart = null; }
+  if (s.mode !== "IDLE" && metStart == null && s.valid_frames > 0) metStart = s.now - (s.link_age_s || 0);
+  const m = metStart == null ? null : Math.max(0, s.now - metStart), pad = n => String(Math.floor(n)).padStart(2, "0");
+  $("met").innerHTML = `<small>${t("elapsed")}</small>${m == null ? "—" : `${pad(m / 3600)}:${pad(m % 3600 / 60)}:${pad(m % 60)}`}`;
+  const u = gps.utc == null ? null : String(gps.utc).padStart(9, "0");
+  $("utc").innerHTML = `<small>${t("utc")}</small>${u ? `${u.slice(0, 2)}:${u.slice(2, 4)}:${u.slice(4, 6)}` : "—"}`;
+}
+
+/* ---------- numbers ---------- */
+function setMetric(id, cls) { const el = $("mm-" + id); el.classList.toggle("bad", cls === "bad"); el.classList.toggle("warn", cls === "warn"); }
+function drawCompass(deg) {
+  const { g, w, h } = prepare($("c-compass"));
+  g.strokeStyle = css("muted"); g.lineWidth = 1; g.beginPath(); g.arc(w / 2, h / 2, w / 2 - 2, 0, 7); g.stroke();
+  label(g, "N", w / 2, 9, { align:"center", color:css("muted") });
+  if (deg == null) return;
+  const a = deg * Math.PI / 180, r = w / 2 - 10;
+  arrow(g, w / 2 - Math.sin(a) * 4, h / 2 + Math.cos(a) * 4, w / 2 + Math.sin(a) * r, h / 2 - Math.cos(a) * r, css("line4"), 3, 8);
+}
+function stat(id, buf, now, cap = CH_WIN) {
+  const ys = win(buf, now, cap).map(p => p[1]);
+  if (!ys.length) { $(id).textContent = ""; return; }
+  const avg = ys.reduce((a, b) => a + b, 0) / ys.length, sd = Math.sqrt(ys.reduce((a, b) => a + (b - avg) ** 2, 0) / ys.length);
+  $(id).textContent = `RT ${fmt(ys[ys.length - 1], 2)}  avg ${fmt(avg, 2)}  σ ${fmt(sd, 2)}`;
+}
+function update() {
+  const s = S, now = s.now, D = derived(s);
+  lastDrift = D;
+  const age = s.link_age_s, live = s.mode !== "IDLE" && age != null && age < 3;
+  $("status").textContent = `${s.mode}: ${t("health_" + s.health)}` + (s.mode === "DEMO" ? ` (${t("simulated")})` : "");
+  $("status").style.color = live ? css("ok") : css("warn");
+
+  const gps = s.gps || {}, rate = D.d.descent_rate;
+  $("m-alt").innerHTML = gps.altitude_m == null ? "—" : `${gps.altitude_m.toFixed(1)}<small> m</small>`;
+  $("m-rate").innerHTML = rate == null ? "—" : `${Math.abs(rate).toFixed(1)}<small> m/s ${t(rate >= 0 ? "down" : "up")}</small>`;
+  $("s-rate").textContent = rate == null ? "" : t("rateNote");
+  if (D.dr) {
+    const sp = Math.hypot(D.dr[4], D.dr[5]), deg = bearing(D.dr[4], D.dr[5]);
+    $("m-drift").innerHTML = `${sp.toFixed(1)}<small> m/s ${dirName(deg)} ${deg.toFixed(0)}°</small>`;
+    $("s-drift").textContent = t("driftNote", (now - D.dr[0]).toFixed(0), D.d.window_s.toFixed(0));
+    if (PAGE === "wind") drawCompass(deg);
+  } else {
+    $("m-drift").textContent = "—";
+    $("s-drift").textContent = D.d.error || (D.d.descent_rate != null && D.d.descent_rate < 0.2 ? t("driftNoDescent") : t("driftNeed", D.d.window_s.toFixed(0)));
+    if (PAGE === "wind") drawCompass(null);
+  }
+  if (D.land) {
+    const dist = Math.hypot(D.land.de, D.land.dn), deg = bearing(D.land.de, D.land.dn);
+    $("m-land").innerHTML = `T−${D.land.T.toFixed(0)}<small> s · ${dist.toFixed(0)} m ${dirName(deg)}</small>`;
+    $("s-land").textContent = t("landNote");
+  } else {
+    $("m-land").textContent = "—";
+    $("s-land").textContent = t(isFinite(D.ground) ? "landWhenDescending" : "landNeedGround");
+  }
+  $("m-gps").textContent = `${gps.fix ?? "—"} / ${gps.satellites ?? "—"}`;
+  $("s-gps").textContent = gps.hdop == null ? "" : `HDOP ${gps.hdop}`;
+  $("m-link").innerHTML = age == null ? "—" : `${age.toFixed(1)}<small> s</small>`;
+  $("s-link").textContent = `${t("framesNote", s.valid_frames, s.errors)} · ${(s.rx_bytes / 1024).toFixed(1)} KiB`;
+  $("m-att").innerHTML = s.imu.length >= 3 ? s.imu.slice(0, 3).map((v, i) => `${"XYZ"[i]}<small> ${v.toFixed(1)}°</small>`).join(" ") : "—";
+  setMetric("link", s.mode === "IDLE" ? "" : age == null || age > 10 ? "bad" : age > 3 ? "warn" : "");
+  setMetric("gps", s.mode !== "IDLE" && !gps.fix ? "warn" : "");
+
+  MARKS = s.checkpoints.items.map(c => [c.service_t, c.label || t("cpMark", c.id)]);
+  evalAlarms(s); renderStrip(s, D);
+  if (PAGE === "wind") {
+    draw3D($("c3d"), D, "path", "st-3d"); draw3D($("c3dc"), D, "cloud", "st-3dc");
+    drawMap($("c-map"), D); drawProfile($("c-prof"), D); drawDriftTime($("c-drift"), D, now);
+    renderDriftTable(D, now); renderRawStream(s); renderCheckpoints(s);
+  } else {
+    drawAttitude($("c-att"), s.imu);
+    $("st-att").textContent = s.imu.length >= 3 ? `${s.imu.slice(0, 3).map(v => fmt(v, 1)).join(" / ")}°` : "";
+    drawAlt($("c-alt"), D, now);
+    const imuColors = [css("line2"), css("line3"), css("line1")], ac = ATLM_COLORS();
+    drawSeries($("c-imu"), [0, 1, 2].map(i => ({ pts:s.history.imu.map(r => [r[0], r[1 + i]]), color:imuColors[i] })), now);
+    $("lg-imu").innerHTML = imuColors.map((c, i) => `<span style="color:${c}">${t("field", i)}</span>`).join("");
+    $("st-imu").textContent = s.imu.length >= 3 ? `RT ${s.imu.slice(0, 3).map(v => fmt(v, 1)).join(" / ")}` : "";
+    drawSeries($("c-atlm"), ac.map((c, i) => ({ pts:s.history.atlm.map(r => [r[0], r[1 + i]]), color:c })), now);
+    $("lg-atlm").innerHTML = ac.map((c, i) => `<span style="color:${c}">${i}</span>`).join("");
+    renderMotion(s, D, now);
+    renderCamera(s); renderBits(s); renderRaw(s); renderStreams(s);
+  }
+
+
+  const lastMsg = s.messages[s.messages.length - 1], lastNote = s.notices[s.notices.length - 1];
+  $("ev-msg").textContent = lastMsg ? `MSG_${lastMsg[1].toString(16).toUpperCase()}  ${lastMsg[2]}` : "";
+  $("ev-note").textContent = lastNote ? lastNote[1] : "";
+  $("footer").textContent = `LOG ${s.log_directory || "—"}`;
+
+  const lines = [...s.terminal.map(x => [x[0], `RX  ${x[2]}`]), ...txLog.map(x => [x[0], `TX  ${x[1]}`])].sort((a, b) => a[0] - b[0]);
+  setText($("terminal"), lines.map(l => `${l[0].toFixed(1)} ${l[1]}`).join("\n"));
+  setText($("messages"), s.messages.map(m => `${m[0].toFixed(1)} MSG_${m[1].toString(16).toUpperCase()}  ${m[2]}`).join("\n"));
+  $("send").disabled = $("utc-btn").disabled = $("tsend").disabled = !s.can_transmit;
+  $("term").placeholder = t(s.can_transmit ? "sendPlaceholder" : "sendDisabled");
+  $("tx").disabled = s.mode !== "LIVE";
+  if (s.mode !== "LIVE") $("tx").checked = false;
+  $("tx-state").textContent = t(s.can_transmit ? "txOn" : "txOff");
+  $("tx-state").classList.toggle("on", s.can_transmit);
+}
+/* linear velocity (from GPS position change) and angular rate (from attitude change): both derived, see the notes */
+function renderMotion(s, D, now) {
+  const vel = D.d.velocity, om = s.history.omega, last = vel[vel.length - 1], w = om[om.length - 1];
+  if (last) {
+    const vh = Math.hypot(last[1], last[2]), vz = last[3], v3 = Math.hypot(vh, vz);
+    $("m-vel").innerHTML = `${vh.toFixed(1)}<small> ${t("vH")}</small> ${vz.toFixed(1)}<small> ${t("vV")}</small>`;
+    const age = now - last[0];                                   // a frozen last value must not read as "now"
+    $("s-vel").textContent = age > 3 ? t("stale", age.toFixed(0)) : `3D ${v3.toFixed(1)} m/s · ${t("velNote")}`;
+    setMetric("vel", age > 3 ? "warn" : "");
+  } else { $("m-vel").textContent = "—"; $("s-vel").textContent = t("velNote"); setMetric("vel", ""); }
+  if (w) {
+    const mag = Math.hypot(w[1], w[2], w[3]);
+    $("m-omega").innerHTML = `${mag.toFixed(0)}<small> °/s</small>`;
+    const age = now - w[0];
+    $("s-omega").textContent = age > 3 ? t("stale", age.toFixed(0)) : `X ${w[1].toFixed(0)}  Y ${w[2].toFixed(0)}  Z ${w[3].toFixed(0)} · ${t("omegaNote")}`;
+    setMetric("omega", age > 3 ? "warn" : "");
+  } else { $("m-omega").textContent = "—"; $("s-omega").textContent = t("omegaNote"); setMetric("omega", ""); }
+  const axes = [css("line2"), css("line3"), css("line1")];
+  drawSeries($("c-omega"), [1, 2, 3].map(i => ({ pts:om.map(r => [r[0], r[i]]), color:axes[i - 1] })), now);
+  $("st-omega").textContent = w ? `X ${w[1].toFixed(0)} Y ${w[2].toFixed(0)} Z ${w[3].toFixed(0)} °/s` : "";
+  drawSeries($("c-vel"), [
+    { pts:vel.map(r => [r[0], Math.hypot(r[1], r[2])]), color:css("line1") },
+    { pts:vel.map(r => [r[0], r[3]]), color:css("line4") },
+    { pts:vel.map(r => [r[0], Math.hypot(r[1], r[2], r[3])]), color:"#fff" },
+  ], now);
+  $("st-vel").textContent = last ? `H ${Math.hypot(last[1], last[2]).toFixed(1)}  V ${last[3].toFixed(1)}  m/s` : "";
+}
+function renderCamera(s) {
+  const jp = $("jpeg"), jv = "/api/jpeg?v=" + s.jpeg_size;
+  if (s.jpeg_size && jp.dataset.v !== jv) { jp.dataset.v = jv; jp.src = jv; }
+  jp.hidden = !s.jpeg_size; $("cam-empty").textContent = s.jpeg_size ? "" : t("camWait");
+  $("st-cam").textContent = s.jpeg_size ? `${(s.jpeg_size / 1024).toFixed(0)} KiB` : "";
+  const qp = $("qlook"), qv = "/api/qlook.png?v=" + s.qlook_version;
+  if (s.qlook_version && qp.dataset.v !== qv) { qp.dataset.v = qv; qp.src = qv; }
+  qp.hidden = !s.qlook_version; $("qlook-empty").textContent = s.qlook_version ? "" : t("qlookWait");
+}
+function renderDriftTable(D, now) {
+  const rows = D.samples.slice(-60).reverse();
+  $("st-dtab").textContent = D.samples.length ? t("driftTableNote", D.d.window_s.toFixed(0), D.samples.length) : "";
+  const head = `<tr><th>${t("colAge")}</th><th>${t("colAlt")}</th><th>${t("east")}</th><th>${t("north")}</th><th>${t("speed")}</th><th>${t("colToward")}</th></tr>`;
+  const body = rows.length ? rows.map(r => {
+    const sp = Math.hypot(r[4], r[5]), deg = bearing(r[4], r[5]);
+    return `<tr><td class="n">${(now - r[0]).toFixed(0)} s</td><td class="n">${r[3].toFixed(1)}</td><td class="n">${r[4].toFixed(2)}</td><td class="n">${r[5].toFixed(2)}</td><td class="n">${sp.toFixed(2)}</td><td class="n">${deg.toFixed(0)}° ${dirName(deg)}</td></tr>`;
+  }).join("") : `<tr><td colspan="6" style="color:var(--muted)">${driftEmptyText(D.d)}</td></tr>`;
+  const html = head + body;
+  if ($("dtab").dataset.h !== html) { $("dtab").innerHTML = html; $("dtab").dataset.h = html; }
+}
+function buildCheckpointButtons() {
+  const box = $("cpbtns");
+  box.innerHTML = "";
+  const mark = document.createElement("button");               // unnamed: for "something just happened"
+  mark.className = "mark"; mark.textContent = t("cpMarkBtn");
+  mark.addEventListener("click", async () => {
+    await post({ name:"checkpoint_mark" });
+    mark.classList.add("hit"); setTimeout(() => mark.classList.remove("hit"), 700);
+    poll();
+  });
+  box.appendChild(mark);
+  for (const name of cfg.checkpoints) {
+    const b = document.createElement("button");
+    b.textContent = name;
+    b.addEventListener("click", async () => {
+      await post({ name:"checkpoint", label:name });
+      b.classList.add("hit"); setTimeout(() => b.classList.remove("hit"), 700);
+      poll();                                              // show the new row immediately
+    });
+    box.appendChild(b);
+  }
+  const undo = document.createElement("button");
+  undo.className = "undo"; undo.textContent = t("cpUndo");
+  undo.addEventListener("click", async () => { await post({ name:"checkpoint_undo" }); poll(); });
+  box.appendChild(undo);
+}
+function renderCheckpoints(s) {
+  const c = s.checkpoints;
+  $("st-cp").textContent = t(c.saved ? "cpSaved" : "cpMemory");
+  const rows = c.items.slice().reverse().map(r =>
+    `<tr title="${r.utc}"><td class="t">${r.utc.slice(11, 21)}</td><td>${r.label || `<span style="color:var(--muted)">${t("cpMark", r.id)}</span>`}</td><td class="n">${r.alt_m == null ? "—" : r.alt_m.toFixed(1) + " m"}</td></tr>`).join("");
+  const html = `<tr><th>${t("colTimeUtc")}</th><th>${t("colLabel")}</th><th style="text-align:right">${t("colAlt")}</th></tr>` +
+    (rows || `<tr><td colspan="3" style="color:var(--muted)">${t("cpEmpty")}</td></tr>`);
+  if ($("cplist").dataset.h !== html) { $("cplist").innerHTML = html; $("cplist").dataset.h = html; }
+}
+function renderRawStream(s) {
+  if ($("pause").checked) return;
+  setText($("rawstream"), s.terminal.map(x => `${x[0].toFixed(1)}  ${x[1]}   |${x[2]}|`).join("\n"));
+}
+function renderBits(s) {
+  const bits = $("bits");
+  if (!bits.children.length) for (let i = 0; i < 32; i++) bits.appendChild(document.createElement("div"));
+  [...bits.children].forEach((d, i) => { const v = s.dtlm[i]; d.textContent = String(i).padStart(2, "0"); d.title = `bit ${i} = ${v ?? "—"}`; d.className = v ? "on" : ""; });
+  setText($("notices"), s.notices.map(n => `${n[0].toFixed(1)}  ${n[1]}`).join("\n"));
+}
+function setText(el, text) {
+  if (el.textContent === text) return;
+  const bottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 4;
+  el.textContent = text; if (bottom) el.scrollTop = el.scrollHeight;
+}
+function renderRaw(s) {
+  const gps = s.gps || {}, fresh = k => s.seen_age[k] != null && s.seen_age[k] < 3;
+  const rows = [
+    [t("lat"), gps.fix ? gps.lat.toFixed(6) : "—", "°", "GPS"], [t("lon"), gps.fix ? gps.lon.toFixed(6) : "—", "°", "GPS"],
+    [t("alt"), gps.altitude_m == null ? "—" : gps.altitude_m.toFixed(1), "m", "GPS"], [t("sats"), gps.satellites ?? "—", "", "GPS"],
+    [t("hdop"), gps.hdop ?? "—", "", "GPS"], ["UTC", gps.utc ?? "—", "", "GPS"],
+    ...(s.imu.length ? s.imu : [null, null, null]).map((v, i) => [t("imuField", i), v == null ? "—" : v.toFixed(2), "", "IMU"]),   // every field the kit sends; 3+ are unlabelled on purpose
+    ...s.atlm.map((raw, i) => [t("atlmCh", i), s.calibration[i].enabled ? s.analog[i].toFixed(3) : raw, s.calibration[i].enabled ? s.calibration[i].unit : t("raw"), "ATLM"]),
+  ];
+  const html = rows.map(r => `<div class="kv"><span class="l">${r[0]}</span><span class="r">${r[1]}</span><span class="u">${r[2]}</span><i class="dot ${fresh(r[3]) ? "ok" : ""}"></i></div>`).join("");
+  if ($("raw").dataset.h !== html) { $("raw").innerHTML = html; $("raw").dataset.h = html; }
+}
+
+async function poll() {
+  if (busy) return;
+  busy = true;
+  try { S = await (await fetch("/api/state")).json(); update(); }
+  catch (e) { $("status").textContent = t("serverLost"); $("status").style.color = css("bad"); }
+  busy = false;
+}
+
+/* ---------- start ---------- */
+(async function init() {
+  cfg = await (await fetch("/api/config")).json();
+  LANG = cfg.language in STR ? cfg.language : "en";
+  const r = document.documentElement.style;
+  for (const [k, v] of Object.entries(cfg.colors)) r.setProperty("--" + k, v);
+  const q = f => f.map(n => /\s/.test(n) ? `"${n}"` : n).join(",");
+  r.setProperty("--font", q(cfg.font_family) + ",system-ui,sans-serif");
+  r.setProperty("--mono", q(cfg.mono_family) + ",ui-monospace,monospace");
+  const px = pt => Math.round(pt * 4 / 3);          // [sizes] are points (shared with the Tk frontend)
+  TY.m = px(cfg.sizes.base); TY.s = Math.max(13, TY.m - 1); TY.l = Math.round(TY.m * 1.6);
+  for (const k of ["s", "m", "l"]) r.setProperty("--" + k, TY[k] + "px");
+  applyText(); buildCheckpointButtons();
+  for (const k of cfg.transports) $("kind").add(new Option(k, k));
+  for (const i of [...Array(24).keys(), 64, 65, 66, 67, 68, 69, 70, 71]) $("cid").add(new Option(i, i));
+  try {
+    const ports = await (await fetch("/api/ports")).json();
+    $("ports").innerHTML = ports.map(p => `<option value="${p.device}">${p.description}</option>`).join("");
+    if (ports.length) $("port").value = ports[0].device;
+  } catch (e) {}
+  const ro = new ResizeObserver(() => { if (S) update(); }); ro.observe($("grid-wind")); ro.observe($("grid-flight"));
+  setInterval(poll, 250); poll();
+})();
+</script>
+</body>
+</html>
