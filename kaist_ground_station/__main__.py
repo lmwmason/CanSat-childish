@@ -12,7 +12,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     source = parser.add_mutually_exclusive_group()
     source.add_argument("--demo", action="store_true")
-    source.add_argument("--port", help="e.g. /dev/ttyUSB0 or /dev/rfcomm0")
+    source.add_argument("--port", help="e.g. /dev/ttyUSB0 or /dev/rfcomm0; \"auto\" picks the kit's USB serial port")
     source.add_argument("--replay", type=Path, help="a session traffic.jsonl (RX only)")
     parser.add_argument("--frontend", choices=list(FRONTENDS), default="web",
                         help="web = browser UI on localhost (default); tk = desktop window")
@@ -28,7 +28,21 @@ def main(argv=None):
         parser.error("--duration requires --headless and a positive number")
     if args.headless and not (args.demo or args.port or args.replay):
         parser.error("headless mode requires --demo, --port, or --replay")
-    service = StationService(args.log_dir)
+    if args.port == "auto":
+        from .autodetect import detect_port
+        args.port = detect_port()
+        if not args.port:
+            parser.error("no serial port found: plug in the adapter, or give --port /dev/ttyUSB0")
+        print(f"auto-detected serial port: {args.port}", flush=True)
+    from .ui_settings import load_ui_settings
+    try:
+        settings = load_ui_settings(args.ui_config)
+    except (OSError, ValueError) as exc:
+        parser.exit(1, f"error: {exc}\n")
+    # Only the web UI has a Record button. Headless capture and the Tk window cannot start a recording
+    # later, so they keep recording from the first byte.
+    auto_record = settings.record_auto or args.headless or args.frontend != "web"
+    service = StationService(args.log_dir, auto_record=auto_record)
     try:
         if args.calibration:
             service.configure_calibration(args.calibration)
@@ -50,9 +64,8 @@ def main(argv=None):
             for _,notice in s.notices:
                 print(notice)
             return int(any("Session error:" in notice for _,notice in s.notices))
-        from .ui_settings import load_ui_settings
         try:
-            load_frontend(args.frontend)(service, load_ui_settings(args.ui_config))
+            load_frontend(args.frontend)(service, settings)
         except FrontendUnavailable as exc:
             parser.exit(1, f"{exc}\nUse --headless for capture without a display.\n")
         return 0

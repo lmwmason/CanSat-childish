@@ -15,7 +15,7 @@ import time
 from .demo import demo_packet
 from .models import Calibration, Telemetry, load_calibration
 from .protocol import Frame, StreamParser, digital_command, time_command
-from .recording import Recorder, Replay
+from .recording import NullRecorder, Recorder, Replay
 from .transport import TRANSPORTS, Transport, TransportFactory
 
 
@@ -40,8 +40,10 @@ class Snapshot:
 
 
 class StationService:
-    def __init__(self, log_root: Path, clock=time.monotonic, transport_factory: TransportFactory | None = None):
+    def __init__(self, log_root: Path, clock=time.monotonic, transport_factory: TransportFactory | None = None,
+                 auto_record: bool = True):
         self.log_root = Path(log_root)
+        self.auto_record = auto_record      # True: every session is recorded from its first byte (the original behaviour)
         self.clock = clock
         self.transport_factory = transport_factory  # test override; wins over the kind registry
         self.mode = "IDLE"
@@ -49,6 +51,7 @@ class StationService:
         self.transport: Transport | None = None
         self.replay = None
         self.recorder = None
+        self.rec_origin = None              # clock value that recorded times are measured from
         self.log_directory = ""
         self.calibration = tuple(Calibration() for _ in range(8))
         self.calibration_path = ""
@@ -82,13 +85,47 @@ class StationService:
         self.stop()
         self._reset()
         self.mode, self.source = mode, source
-        try:
-            self.recorder = Recorder(self.log_root, mode, source, self.calibration)
-        except OSError:
-            self.mode = "IDLE"
-            raise
+        self.recorder, self.log_directory, self.rec_origin = NullRecorder(), "", None
+        if self.auto_record:
+            try:
+                self._begin_recording(self.started)     # recording from the first byte: same time base as before
+            except OSError:
+                self.mode = "IDLE"
+                raise
+            self.notice(f"{mode}: {source}; recording started")
+        else:
+            self.notice(f"{mode}: {source}; not recording (start it explicitly)")
+
+    # -- recording is separate from the session: a session can be watched without being kept ----------------
+    @property
+    def recording(self) -> bool:
+        return isinstance(self.recorder, Recorder)
+
+    def _begin_recording(self, origin: float | None = None):
+        self.recorder = Recorder(self.log_root, self.mode, self.source, self.calibration)
         self.log_directory = str(self.recorder.directory)
-        self.notice(f"{mode}: {source}; recording started")
+        # recorded times start at 0 here, so a replay of a late-started recording does not wait out the gap
+        self.rec_origin = self.clock() if origin is None else origin
+
+    def start_recording(self):
+        if self.mode == "IDLE":
+            raise ValueError("Start a session (connect, demo or replay) before recording")
+        if self.recording:
+            raise ValueError("Already recording")
+        self._begin_recording()
+        self.notice(f"Recording started: {self.log_directory}")
+
+    def stop_recording(self):
+        if not self.recording:
+            raise ValueError("Not recording")
+        directory = self.log_directory
+        self.recorder.close()
+        self.recorder, self.log_directory, self.rec_origin = NullRecorder(), "", None
+        self.notice(f"Recording stopped: {directory}")
+
+    def _rec_t(self, now: float) -> float:
+        """Seconds since recording started, the time base of everything written to disk."""
+        return now - (self.rec_origin if self.rec_origin is not None else self.started)
 
     def connect(self, port: str, baud: int = 115200, kind: str = "serial"):
         self.stop()
@@ -130,6 +167,7 @@ class StationService:
                     errors.append(str(exc))
         if self.mode != "IDLE":
             self.notice("Session stopped" + (": " + "; ".join(errors) if errors else ""))
+        self.rec_origin = None
         self.mode = "IDLE"
 
     def enable_transmit(self, enabled: bool):
@@ -142,14 +180,14 @@ class StationService:
             raise ValueError("Enable TX in a live serial session first")
         try:
             # Record the intended bytes before writing; success is separately logged.
-            self.recorder.event(Frame("TX_REQUEST", {"description": description}, data), self.clock()-self.started)
+            self.recorder.event(Frame("TX_REQUEST", {"description": description}, data), self._rec_t(self.clock()))
             self.recorder.flush()
             self.transport.write(data)
             self.tx_bytes += len(data)
-            self.recorder.bytes("tx", data, self.clock() - self.started)
+            self.recorder.bytes("tx", data, self._rec_t(self.clock()))
             self.recorder.event(Frame("TX_WRITTEN", {"description": description,
                                   "status": "written to serial; satellite execution unconfirmed"}, data),
-                                self.clock() - self.started)
+                                self._rec_t(self.clock()))
             self.recorder.flush()
             self.notice(f"TX {description} — serial write complete; execution unconfirmed")
         except OSError as exc:
@@ -173,7 +211,7 @@ class StationService:
         for frame in events:
             self.telemetry.apply(frame, now)
             if self.recorder:
-                self.recorder.event(frame, now - self.started)
+                self.recorder.event(frame, self._rec_t(now))
             if frame.kind == "ERROR":
                 self.notice(frame.data["message"])
             else:
@@ -184,7 +222,7 @@ class StationService:
             return
         self.rx_bytes += len(data)
         self.terminal.append((now, data[:200].hex(" "), repr(data[:200])))
-        self.recorder.bytes("rx", data, now - self.started)
+        self.recorder.bytes("rx", data, self._rec_t(now))
         self._events(self.parser.feed(data, now), now)
 
     def tick(self):

@@ -19,12 +19,22 @@ class Checkpoints:
         self.service = service
         self._dir = None
         self.items: list[dict] = []
+        self._replay_key = None
+        self._replay_rows: list[tuple[float, dict]] = []
 
     # the list belongs to one session: a new session folder starts a new list
     def _sync(self) -> None:
         directory = self.service.log_directory or ""
-        if directory != self._dir:
-            self._dir, self.items = directory, self._load(directory)
+        if directory == self._dir:
+            return
+        previous, self._dir = self._dir, directory
+        if previous == "" and directory and self.items:
+            # Recording just started: marks made while nothing was being kept were only in memory. They are
+            # real events of this run, so they move into the new folder (flagged) instead of being dropped.
+            for row in self.items:
+                self._append({**row, "before_recording": True})
+            return
+        self.items = self._load(directory)
 
     @staticmethod
     def _load(directory: str) -> list[dict]:
@@ -48,7 +58,43 @@ class Checkpoints:
             with open(Path(self._dir) / FILENAME, "a", encoding="utf-8") as f:
                 f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
+    # -- replay: show the marks that were made when the replayed session was recorded ---------------------
+    def _replayed(self) -> list[dict]:
+        """Marks stored beside the replayed traffic.jsonl, placed on the replay clock.
+
+        Recorded times are seconds since the folder's started_utc (session.json), and every mark carries its
+        UTC, so replay position = mark UTC - started_utc. A mark appears once the replay has reached it.
+        """
+        folder = Path(self.service.source).parent
+        key = str(folder)
+        if self._replay_key != key:
+            self._replay_key, self._replay_rows = key, []
+            try:
+                started = datetime.strptime(json.loads((folder / "session.json").read_text(encoding="utf-8"))["started_utc"],
+                                            "%Y%m%dT%H%M%S.%fZ").replace(tzinfo=timezone.utc)
+                for row in self._load(key):
+                    offset = (datetime.fromisoformat(row["utc"]) - started).total_seconds()
+                    self._replay_rows.append((offset, row))
+            except (OSError, ValueError, KeyError):
+                self._replay_rows = []                       # no readable session.json / marks: nothing to show
+        now = self.service.clock()
+        return [{**row, "service_t": self.service.started + offset}
+                for offset, row in self._replay_rows if self.service.started + offset <= now]
+
+    def _showing_replay(self) -> bool:
+        """True while a replay runs and after it has finished (the service goes IDLE at the end, but the
+        replayed session is still what is on screen until a new session starts)."""
+        service = self.service
+        if service.mode == "REPLAY":
+            return True
+        return service.mode == "IDLE" and Path(service.source or "").name == "traffic.jsonl"
+
+    def _refuse_in_replay(self) -> None:
+        if self._showing_replay():
+            raise ValueError("Replay shows the recorded session's marks; marks cannot be added or removed here")
+
     def add(self, label: str = "", unnamed: bool = False) -> dict:
+        self._refuse_in_replay()
         """Record now. A named checkpoint must have a label (an empty one is almost certainly a mistake);
         an unnamed mark is stored with an empty label and shown by its number."""
         label = label.strip()
@@ -74,6 +120,7 @@ class Checkpoints:
         return row
 
     def undo(self) -> dict | None:
+        self._refuse_in_replay()
         self._sync()
         if not self.items:
             return None
@@ -82,5 +129,7 @@ class Checkpoints:
         return row
 
     def as_dict(self) -> dict:
+        if self._showing_replay():
+            return {"items": self._replayed(), "saved": True, "replay": True}
         self._sync()
         return {"items": list(self.items), "saved": bool(self._dir)}

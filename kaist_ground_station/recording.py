@@ -9,6 +9,23 @@ from pathlib import Path
 from .protocol import Frame
 
 
+class NullRecorder:
+    """Stands in while a session is not being recorded: same calls, nothing written."""
+    directory = None
+
+    def bytes(self, direction: str, data: bytes, elapsed: float) -> None:
+        pass
+
+    def event(self, event: Frame, elapsed: float) -> None:
+        pass
+
+    def flush(self) -> None:
+        pass
+
+    def close(self) -> None:
+        pass
+
+
 class Recorder:
     def __init__(self, root: Path, mode: str, source: str, calibration: tuple):
         from dataclasses import asdict

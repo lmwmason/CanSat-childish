@@ -37,9 +37,13 @@ DEFAULT_ALARMS = {
     "min_satellites": 4.0,   # fewer satellites than this -> warning
     "max_hdop": 5.0,         # HDOP above this -> warning
     "error_burst": 3.0,      # this many new error frames within 10 s -> warning
+    "quality_warn_pct": 95.0,   # link quality (worse of valid-frame % and image-completion %, last 30 s) below this -> warning
+    "quality_bad_pct": 80.0,    # ... below this -> alarm
 }
 PAGES = ("flight", "wind")      # web screens: "/" is flight, "/wind" is the wind field
 LANGUAGES = ("en", "ko")   # web UI text tables in web/static/i18n.js
+_BOOLS = {"true": True, "yes": True, "1": True, "on": True, "false": False, "no": False, "0": False, "off": False}
+_BT_ADDRESS = re.compile(r"^[0-9a-fA-F]{12}$")
 _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
@@ -59,6 +63,9 @@ class UISettings:
     size_log: int = 9
     size_plot: int = 9
     language: str = "en"
+    record_auto: bool = True             # web UI: record from the first byte (True) or only after Record is pressed (False)
+    bluetooth_auto: bool = False         # dial the address once at start-up when launched on a live serial port
+    bluetooth_address: str = ""          # 12 hex digits of the satellite's Bluetooth module, for the adapter's ATD command
     checkpoints: list = field(default_factory=lambda: ["Drone ascent start", "Drop", "Parachute open", "Landing"])   # button labels
     open_pages: list = field(default_factory=lambda: list(PAGES))   # windows opened at start-up, in this order
     colors: dict = field(default_factory=lambda: dict(DEFAULT_COLORS))
@@ -93,12 +100,30 @@ def load_ui_settings(path: Path | None) -> UISettings:
             raise ValueError(f"{path}: [ui] open_pages has unknown {', '.join(unknown)}; known: {', '.join(PAGES)}")
         settings.open_pages = wanted           # empty list = open nothing
 
+    auto_start = _section(parser, "recording").get("auto_start")
+    if auto_start is not None:
+        if auto_start.strip().lower() not in _BOOLS:
+            raise ValueError(f"{path}: [recording] auto_start must be true or false")
+        settings.record_auto = _BOOLS[auto_start.strip().lower()]
+
     labels = _section(parser, "checkpoints").get("labels")
     if labels is not None:
         names = _names(labels)
         if len(names) > 12 or any(len(n) > 80 for n in names):
             raise ValueError(f"{path}: [checkpoints] labels: at most 12 labels of up to 80 characters")
         settings.checkpoints = names           # empty list = no buttons
+
+    address = _section(parser, "bluetooth").get("address")
+    if address is not None:
+        address = address.strip()
+        if address and not _BT_ADDRESS.match(address):
+            raise ValueError(f"{path}: [bluetooth] address must be 12 hex digits, e.g. 0001958D78EC")
+        settings.bluetooth_address = address.upper()
+    auto = _section(parser, "bluetooth").get("auto_connect")
+    if auto is not None:
+        if auto.strip().lower() not in ("true", "false", "yes", "no", "1", "0", "on", "off"):
+            raise ValueError(f"{path}: [bluetooth] auto_connect must be true or false")
+        settings.bluetooth_auto = auto.strip().lower() in ("true", "yes", "1", "on")
 
     fonts = _section(parser, "fonts")
     for key in ("font_family", "mono_family", "plot_family"):

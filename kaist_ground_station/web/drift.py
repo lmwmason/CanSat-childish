@@ -87,14 +87,27 @@ def estimate(fixes, window_s: float = WINDOW_S):
     return samples, profile, None
 
 
-def velocity_series(local: np.ndarray, span_s: float = 3.0) -> list[list[float]]:
+SAMPLES_PER_WINDOW = 3.5     # a slope needs at least 3 fixes inside the window
+
+
+def window_for(t: np.ndarray, minimum_s: float) -> float:
+    """The shortest window that still holds a few fixes at this receiver's rate (the kit sends GGA at
+    about 0.5 Hz, which a fixed 3 s window never satisfied)."""
+    if len(t) < 3:
+        return minimum_s
+    return max(minimum_s, SAMPLES_PER_WINDOW * float(np.median(np.diff(t))))
+
+
+def velocity_series(local: np.ndarray, span_s: float | None = None) -> list[list[float]]:
     """[[t, v_east, v_north, v_up], ...] m/s from position change; the GGA sentence has no speed field.
 
-    Causal: each value is the least-squares slope of the fixes of the last span_s seconds, so it
-    reacts with about half a window of delay and is only as good as the GPS positions.
+    Causal: each value is the least-squares slope of the fixes of the last span_s seconds (at least 3 s,
+    longer when the GPS is slow), so it lags by about half a window and is only as good as the positions.
     """
     out = []
     t = local[:, 0] if len(local) else np.empty(0)
+    if span_s is None:
+        span_s = window_for(t, 3.0)
     start = 0
     for i in range(len(t)):
         while t[i] - t[start] > span_s:
@@ -111,11 +124,13 @@ def velocity_series(local: np.ndarray, span_s: float = 3.0) -> list[list[float]]
     return out
 
 
-def descent_rate(local: np.ndarray, span_s: float = 6.0) -> float | None:
+def descent_rate(local: np.ndarray, span_s: float | None = None) -> float | None:
     """Metres per second of GPS-altitude loss over the last span_s (positive = descending)."""
     if len(local) < 3:
         return None
     t = local[:, 0]
+    if span_s is None:
+        span_s = window_for(t, 6.0)
     recent = t >= t[-1] - span_s
     if np.count_nonzero(recent) < 3 or t[recent][-1] - t[recent][0] < span_s / 3:
         return None

@@ -29,6 +29,9 @@ button { background:var(--button); border:1px solid var(--border); font-weight:b
 button:hover { background:var(--button_active); }
 button:disabled { color:var(--muted); border-color:var(--muted); cursor:not-allowed; background:#222; }
 label { color:var(--muted); }
+button#rec { min-width:7.5em; } button#rec.on { background:var(--bad); border-color:var(--bad); color:#fff; }
+#linkq.ok { color:var(--ok); border-color:var(--ok); } #linkq.warn { color:var(--warn); border-color:var(--warn); } #linkq.bad { color:var(--bad); border-color:var(--bad); } #linkq { cursor:help; }
+#recchip.on { border-color:var(--bad); color:var(--bad); } #recchip.idle { border-color:var(--warn); color:var(--warn); }
 #status { margin-left:auto; font-weight:bold; font-size:calc(var(--m) + 2px); }
 #error { color:var(--bad); font-weight:bold; }
 
@@ -132,14 +135,14 @@ pre { font:var(--s)/1.3 var(--mono); padding:4px 8px; overflow:auto; white-space
   <label data-t="transport"></label><select id="kind"></select>
   <label data-t="port"></label><input id="port" list="ports" size="16"><datalist id="ports"></datalist>
   <label data-t="baud"></label><input id="baud" value="115200" size="7">
-  <button id="connect" data-t="connect"></button><button id="stop" data-t="stop"></button>
+  <button id="connect" data-t="connect"></button><button id="stop" data-t="stop"></button><button id="rec"></button>
   <label data-t="file"></label><input id="path" size="24" data-tp="filePlaceholder">
   <button id="replay" data-t="replay"></button><button id="calib" data-t="calibration"></button>
   <span id="error"></span><span id="status" class="num">—</span>
 </div>
 
 <div id="strip">
-  <span class="chip" id="ph"></span><span class="chip" id="met"></span><span class="chip" id="utc"></span><span class="chip" id="almsum"></span>
+  <span class="chip" id="recchip"></span><span class="chip" id="ph"></span><span class="chip" id="met"></span><span class="chip" id="utc"></span><span class="chip" id="almsum"></span><span class="chip" id="linkq"></span>
 </div>
 
 <div id="metrics">
@@ -185,7 +188,7 @@ pre { font:var(--s)/1.3 var(--mono); padding:4px 8px; overflow:auto; white-space
 <div id="comm" class="flight">
   <section class="panel"><h2><span data-t="terminal"></span><span class="st" data-t="terminalNote"></span></h2>
     <pre id="terminal"></pre>
-    <div class="row"><input id="term"><input type="checkbox" id="hex"><label for="hex">HEX</label><button id="tsend" data-t="send"></button></div></section>
+    <div class="row"><button id="bt-scan" data-t="btScan"></button><button id="bt-connect" data-t="btConnect"></button><input id="term"><input type="checkbox" id="hex"><label for="hex">HEX</label><button id="tsend" data-t="send"></button></div></section>
   <section class="panel"><h2><span data-t="commands"></span><span class="st" id="tx-state"></span></h2>
     <div class="row"><input type="checkbox" id="tx"><label for="tx" data-t="txEnable"></label>
       <label data-t="id"></label><select id="cid"></select><label data-t="value"></label><input id="cval" value="0" size="4">
@@ -232,17 +235,21 @@ async function post(body) {
     if (!r.ok) throw new Error(j.error || r.statusText);
     $("error").textContent = "";
   } catch (e) {
-    $("error").textContent = e.message;
+    // a network failure (TypeError "Failed to fetch") means the server process is gone, not that the action was wrong
+    $("error").textContent = e instanceof TypeError ? t("serverGone") : e.message;
     clearTimeout(errTimer); errTimer = setTimeout(() => $("error").textContent = "", 8000);
   }
 }
 const wire = (id, fn) => $(id).addEventListener("click", () => fn());
 wire("connect", () => post({ name:"connect", kind:$("kind").value, port:$("port").value, baud:$("baud").value }));
 wire("stop", () => { $("tx").checked = false; post({ name:"stop" }); });
+wire("rec", async () => { await post({ name: S && S.recording.on ? "record_stop" : "record_start" }); poll(); });
 wire("replay", () => post({ name:"replay", path:$("path").value }));
 wire("calib", () => post({ name:"calibration", path:$("path").value }));
 wire("send", () => post({ name:"command", id:$("cid").value, value:$("cval").value }));
 wire("utc-btn", () => post({ name:"time" }));
+wire("bt-scan", () => post({ name:"bt_scan" }));
+wire("bt-connect", () => post({ name:"bt_connect" }));
 wire("tsend", async () => {
   const text = $("term").value;
   if (!text) return;
@@ -326,6 +333,12 @@ function emptyChart(cv, text, color) { const { g, w, h } = prepare(cv); label(g,
 function driftEmptyText(d) {
   if (d.error) return d.error;
   return d.descent_rate != null && d.descent_rate < 0.2 ? t("driftNoDescent") : t("driftWait");
+}
+
+/* age of a stream's last frame as of the picture on screen: after Stop it stays where it was instead of counting on */
+function ageOf(s, kind) {
+  const seen = s.seen_age[kind];
+  return seen == null ? null : Math.max(0, s.view_now - (s.now - seen));
 }
 
 /* ---------- derived values ---------- */
@@ -598,6 +611,35 @@ function drawDriftTime(cv, D, now) {
   $("st-drift").textContent = `E ${fmt(last[4], 2)}  N ${fmt(last[5], 2)} ${t("driftTimeUnit")}`;
 }
 
+/* ---------- link stability over a sliding window (the image stream is the first thing to break on this link) ---------- */
+const Q_WINDOW = 30, Q_MIN_FRAMES = 20, Q_MIN_IMAGES = 4;
+const qLog = [];
+let Q = null;
+function linkQuality(s) {
+  const row = [s.now, s.valid_frames, s.errors, s.discarded, s.rx_bytes, s.counts.IMAGE_SIZE || 0, s.counts.IMAGE || 0];
+  const last = qLog[qLog.length - 1];
+  if (last && row.slice(1).some((v, i) => v < last[i + 1])) qLog.length = 0;          // counters restarted: a new session
+  qLog.push(row);
+  while (qLog.length > 1 && s.now - qLog[0][0] > Q_WINDOW) qLog.shift();
+  const a = qLog[0], b = qLog[qLog.length - 1], span = b[0] - a[0];
+  const valid = b[1] - a[1], bad = b[2] - a[2], frames = valid + bad, started = b[5] - a[5], done = Math.min(b[6] - a[6], started || b[6] - a[6]);
+  const framePct = frames >= Q_MIN_FRAMES ? 100 * valid / frames : null;
+  const imagePct = started >= Q_MIN_IMAGES ? 100 * done / started : null;
+  const judged = [framePct, imagePct].filter(v => v != null);
+  return { span, frames, bad, started, done, framePct, imagePct, worst: judged.length ? Math.min(...judged) : null,
+           kbps: span >= 3 ? (b[4] - a[4]) / span / 1024 : null, discarded: b[3] - a[3] };
+}
+function renderLinkQuality(q, s) {
+  const A = cfg.alarms, chip = $("linkq");
+  if (s.mode === "IDLE" || q.span < 3) { chip.className = "chip"; chip.innerHTML = `<small>${t("linkQ")}</small>—`; chip.title = t("linkQTitle", Q_WINDOW); return; }
+  const lvl = q.worst == null ? "" : q.worst < A.quality_bad_pct ? "bad" : q.worst < A.quality_warn_pct ? "warn" : "ok";
+  const pct = q.worst == null ? "…" : q.worst.toFixed(0) + "%";
+  const img = q.imagePct == null ? "" : ` · img ${q.done}/${q.started}`;
+  chip.className = "chip " + lvl;
+  chip.innerHTML = `<small>${t("linkQ")}</small>${pct}${img} · ${q.kbps == null ? "—" : q.kbps.toFixed(1)} KB/s`;
+  chip.title = t("linkQTitle", Q_WINDOW) + `\n${t("frames")}: ${q.frames - q.bad}/${q.frames}` + (q.imagePct == null ? "" : `\n${t("images")}: ${q.done}/${q.started}`) + `\n${t("badFrames")}: ${q.bad} · ${t("discardedB")}: ${q.discarded} B`;
+}
+
 /* ---------- stream table, alarms, phase ---------- */
 function rateOf(kind, now, counts) {
   while (rateLog.length > 1 && now - rateLog[0][0] > 6) rateLog.shift();
@@ -611,7 +653,7 @@ function renderStreams(s) {
   rateLog.push([now, { ...s.counts }]);
   const kinds = [...KINDS.filter(k => k in s.counts || k in s.seen_age || STREAMING.includes(k)), ...Object.keys(s.counts).filter(k => !KINDS.includes(k))];
   const rows = kinds.map(k => {
-    const age = s.seen_age[k], r = rateOf(k, now, s.counts);
+    const age = ageOf(s, k), r = rateOf(k, now, s.counts);
     const led = k === "ERROR" ? ((s.counts.ERROR || 0) ? "bad" : "ok") : ledClass(age);
     return `<tr><td><i class="led ${led}"></i></td><td>${KINDS.includes(k) ? t("s_" + k) : k}</td><td class="n">${age == null ? "—" : age.toFixed(1) + " s"}</td><td class="n">${s.counts[k] || 0}</td><td class="n">${r == null ? "—" : r.toFixed(1) + " /s"}</td></tr>`;
   }).join("");
@@ -635,6 +677,8 @@ function evalAlarms(s) {
     if ("GPS" in s.seen_age && !gps.fix) raise("nofix", "bad", t("aNoFix"));
     if (gps.fix && A.min_satellites && gps.satellites < A.min_satellites) raise("sats", "warn", t("aSats", gps.satellites, A.min_satellites));
     if (gps.fix && A.max_hdop && gps.hdop > A.max_hdop) raise("hdop", "warn", t("aHdop", gps.hdop, A.max_hdop));
+    if (Q && Q.worst != null && Q.worst < (A.quality_warn_pct || 0))
+      raise("quality", Q.worst < (A.quality_bad_pct || 0) ? "bad" : "warn", t("aQuality", Q.worst.toFixed(0), Q.done, Q.started, Q.bad));
     errorLog.push([now, s.errors]); while (errorLog.length > 1 && now - errorLog[0][0] > 10) errorLog.shift();
     const burst = s.errors - errorLog[0][1];
     if (A.error_burst && burst >= A.error_burst) raise("errors", "warn", t("aErrors", burst));
@@ -672,7 +716,7 @@ function renderStrip(s, D) {
   $("ph").innerHTML = `<small>${t("phase")}</small>${t(phase)}`;
   if (s.mode !== lastMode) { lastMode = s.mode; metStart = null; }
   if (s.mode !== "IDLE" && metStart == null && s.valid_frames > 0) metStart = s.now - (s.link_age_s || 0);
-  const m = metStart == null ? null : Math.max(0, s.now - metStart), pad = n => String(Math.floor(n)).padStart(2, "0");
+  const m = metStart == null ? null : Math.max(0, s.view_now - metStart), pad = n => String(Math.floor(n)).padStart(2, "0");
   $("met").innerHTML = `<small>${t("elapsed")}</small>${m == null ? "—" : `${pad(m / 3600)}:${pad(m % 3600 / 60)}:${pad(m % 60)}`}`;
   const u = gps.utc == null ? null : String(gps.utc).padStart(9, "0");
   $("utc").innerHTML = `<small>${t("utc")}</small>${u ? `${u.slice(0, 2)}:${u.slice(2, 4)}:${u.slice(4, 6)}` : "—"}`;
@@ -695,9 +739,10 @@ function stat(id, buf, now, cap = CH_WIN) {
   $(id).textContent = `RT ${fmt(ys[ys.length - 1], 2)}  avg ${fmt(avg, 2)}  σ ${fmt(sd, 2)}`;
 }
 function update() {
-  const s = S, now = s.now, D = derived(s);
+  const s = S, now = s.view_now, D = derived(s);          // view_now freezes when the session ends: Stop freezes the charts
   lastDrift = D;
-  const age = s.link_age_s, live = s.mode !== "IDLE" && age != null && age < 3;
+  const age = s.mode === "IDLE" && s.last_frame_t != null ? Math.max(0, now - s.last_frame_t) : s.link_age_s;   // frozen after Stop too, never negative
+  const live = s.mode !== "IDLE" && age != null && age < 3;
   $("status").textContent = `${s.mode}: ${t("health_" + s.health)}` + (s.mode === "DEMO" ? ` (${t("simulated")})` : "");
   $("status").style.color = live ? css("ok") : css("warn");
 
@@ -731,6 +776,7 @@ function update() {
   setMetric("link", s.mode === "IDLE" ? "" : age == null || age > 10 ? "bad" : age > 3 ? "warn" : "");
   setMetric("gps", s.mode !== "IDLE" && !gps.fix ? "warn" : "");
 
+  Q = linkQuality(s); renderLinkQuality(Q, s);
   MARKS = s.checkpoints.items.map(c => [c.service_t, c.label || t("cpMark", c.id)]);
   evalAlarms(s); renderStrip(s, D);
   if (PAGE === "wind") {
@@ -752,16 +798,25 @@ function update() {
   }
 
 
+  const rec = s.recording, mmss = x => `${String(Math.floor(x / 60)).padStart(2, "0")}:${String(Math.floor(x % 60)).padStart(2, "0")}`;
+  $("rec").textContent = t(rec.on ? "recStop" : "recStart");
+  $("rec").classList.toggle("on", rec.on);
+  $("rec").disabled = s.mode === "IDLE";
+  const chip = $("recchip");
+  chip.className = "chip " + (rec.on ? "on" : s.mode !== "IDLE" ? "idle" : "");
+  chip.innerHTML = rec.on ? `<small>${t("recChip")}</small>● ${mmss(rec.elapsed)}` : `<small>${t("recChip")}</small>${t(s.mode !== "IDLE" ? "notRecording" : "recOff")}`;
   const lastMsg = s.messages[s.messages.length - 1], lastNote = s.notices[s.notices.length - 1];
   $("ev-msg").textContent = lastMsg ? `MSG_${lastMsg[1].toString(16).toUpperCase()}  ${lastMsg[2]}` : "";
   $("ev-note").textContent = lastNote ? lastNote[1] : "";
-  $("footer").textContent = `LOG ${s.log_directory || "—"}`;
+  $("footer").textContent = rec.on ? `LOG ${s.log_directory}` : t("notRecordingFooter");
 
-  const lines = [...s.terminal.map(x => [x[0], `RX  ${x[2]}`]), ...txLog.map(x => [x[0], `TX  ${x[1]}`])].sort((a, b) => a[0] - b[0]);
+  const lines = [...s.terminal_text.map(x => [x[0], `RX  ${x[1]}`]), ...txLog.map(x => [x[0], `TX  ${x[1]}`])].sort((a, b) => a[0] - b[0]);
   setText($("terminal"), lines.map(l => `${l[0].toFixed(1)} ${l[1]}`).join("\n"));
   setText($("messages"), s.messages.map(m => `${m[0].toFixed(1)} MSG_${m[1].toString(16).toUpperCase()}  ${m[2]}`).join("\n"));
   $("send").disabled = $("utc-btn").disabled = $("tsend").disabled = !s.can_transmit;
   $("term").placeholder = t(s.can_transmit ? "sendPlaceholder" : "sendDisabled");
+  $("bt-scan").disabled = $("bt-connect").disabled = s.mode !== "LIVE";
+  $("bt-connect").title = cfg.bluetooth.address ? "ATD" + cfg.bluetooth.address : t("btNoAddress");
   $("tx").disabled = s.mode !== "LIVE";
   if (s.mode !== "LIVE") $("tx").checked = false;
   $("tx-state").textContent = t(s.can_transmit ? "txOn" : "txOff");
@@ -798,7 +853,10 @@ function renderCamera(s) {
   const jp = $("jpeg"), jv = "/api/jpeg?v=" + s.jpeg_size;
   if (s.jpeg_size && jp.dataset.v !== jv) { jp.dataset.v = jv; jp.src = jv; }
   jp.hidden = !s.jpeg_size; $("cam-empty").textContent = s.jpeg_size ? "" : t("camWait");
-  $("st-cam").textContent = s.jpeg_size ? `${(s.jpeg_size / 1024).toFixed(0)} KiB` : "";
+  // The progress bar moves while pieces arrive even when an image never completes, so say how old the picture is.
+  const age = ageOf(s, "IMAGE");
+  $("st-cam").textContent = s.jpeg_size ? `${(s.jpeg_size / 1024).toFixed(0)} KiB` + (age == null ? "" : ` · ${t("imgAge", age.toFixed(0))}`) : "";
+  $("st-cam").style.color = age != null && age > 6 ? css("warn") : "";
   const qp = $("qlook"), qv = "/api/qlook.png?v=" + s.qlook_version;
   if (s.qlook_version && qp.dataset.v !== qv) { qp.dataset.v = qv; qp.src = qv; }
   qp.hidden = !s.qlook_version; $("qlook-empty").textContent = s.qlook_version ? "" : t("qlookWait");
@@ -842,7 +900,8 @@ function buildCheckpointButtons() {
 }
 function renderCheckpoints(s) {
   const c = s.checkpoints;
-  $("st-cp").textContent = t(c.saved ? "cpSaved" : "cpMemory");
+  $("st-cp").textContent = t(c.replay ? "cpReplay" : c.saved ? "cpSaved" : "cpMemory");
+  document.querySelectorAll("#cpbtns button").forEach(b => b.disabled = !!c.replay);   // replay is read-only
   const rows = c.items.slice().reverse().map(r =>
     `<tr title="${r.utc}"><td class="t">${r.utc.slice(11, 21)}</td><td>${r.label || `<span style="color:var(--muted)">${t("cpMark", r.id)}</span>`}</td><td class="n">${r.alt_m == null ? "—" : r.alt_m.toFixed(1) + " m"}</td></tr>`).join("");
   const html = `<tr><th>${t("colTimeUtc")}</th><th>${t("colLabel")}</th><th style="text-align:right">${t("colAlt")}</th></tr>` +
@@ -865,7 +924,7 @@ function setText(el, text) {
   el.textContent = text; if (bottom) el.scrollTop = el.scrollHeight;
 }
 function renderRaw(s) {
-  const gps = s.gps || {}, fresh = k => s.seen_age[k] != null && s.seen_age[k] < 3;
+  const gps = s.gps || {}, fresh = k => ageOf(s, k) != null && ageOf(s, k) < 3;
   const rows = [
     [t("lat"), gps.fix ? gps.lat.toFixed(6) : "—", "°", "GPS"], [t("lon"), gps.fix ? gps.lon.toFixed(6) : "—", "°", "GPS"],
     [t("alt"), gps.altitude_m == null ? "—" : gps.altitude_m.toFixed(1), "m", "GPS"], [t("sats"), gps.satellites ?? "—", "", "GPS"],

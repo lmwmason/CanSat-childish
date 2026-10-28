@@ -77,3 +77,30 @@ class VelocityTests(unittest.TestCase):
         self.assertEqual(drift.velocity_series(two), [])
         same_time = np.array([[1.0, 0, 0, 0]] * 5)
         self.assertEqual(drift.velocity_series(same_time), [])
+
+
+class SlowGpsTests(unittest.TestCase):
+    """The real kit sends GGA at about 0.5 Hz: a fixed 3 s window held 2 fixes and produced nothing."""
+
+    def test_velocity_and_descent_rate_work_at_half_a_hertz(self):
+        fixes = synthetic(ve=2.0, vn=-1.0, fall=5.0, seconds=60, hz=0.5)
+        _, local = drift.to_local(fixes)
+        series = drift.velocity_series(local)
+        self.assertGreater(len(series), 20)
+        for _, ve, vn, vu in series:
+            self.assertAlmostEqual(ve, 2.0, delta=0.05)
+            self.assertAlmostEqual(vn, -1.0, delta=0.05)
+            self.assertAlmostEqual(vu, -5.0, delta=0.05)
+        self.assertAlmostEqual(drift.descent_rate(local), 5.0, delta=0.05)
+
+    def test_fast_gps_keeps_the_short_window(self):
+        _, local = drift.to_local(synthetic(hz=10.0, seconds=10))
+        self.assertEqual(drift.window_for(local[:, 0], 3.0), 3.0)
+        _, slow = drift.to_local(synthetic(hz=0.5, seconds=30))
+        self.assertAlmostEqual(drift.window_for(slow[:, 0], 3.0), 7.0)
+
+    def test_drift_estimate_still_works_at_half_a_hertz(self):
+        samples, profile, error = drift.estimate(synthetic(ve=2.0, vn=-1.0, fall=5.0, seconds=120, hz=0.5))
+        self.assertIsNone(error)
+        self.assertGreater(len(samples), 10)
+        self.assertAlmostEqual(samples[-1][4], 2.0, delta=0.15)

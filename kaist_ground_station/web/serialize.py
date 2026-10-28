@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import io
 import math
+import re
 
 from . import drift
 
@@ -29,6 +30,33 @@ def printable(hexdata: str) -> str:
     except ValueError:
         return ""
     return "".join(chr(b) if 32 <= b < 127 else "·" for b in raw)
+
+
+_FRAGMENT = (
+    re.compile(r"\*[0-9A-Fa-f]{2}$"),                       # NMEA / IMU checksum tail
+    re.compile(r"^\$"),                                      # NMEA sentence start
+    re.compile(r"^-?\d+(\.\d+)?(,-?\d*\.?\d+){2,}"),         # numeric CSV (IMU values, GGA body)
+    re.compile(r"^[,.\-\dA-Fa-f ]*[,.][,.\-\dA-Fa-f ]*$"),     # digits/hex with separators only: a chunk cut inside a frame
+)
+
+
+def text_lines(entries) -> list[list]:
+    """[[t, line]] of the human-readable lines in the received chunks: the adapter's replies (OK, CONNECT,
+    +BTINQ ...). Telemetry frames are binary with text embedded in them, so a line is kept only when it is
+    plain printable ASCII from end to end and does not look like a piece of NMEA/IMU data. This is a
+    heuristic on chunks, not a parser: the full byte-exact stream is the raw stream panel."""
+    out = []
+    for at, hexdata, _ in entries:
+        try:
+            raw = bytes.fromhex(hexdata.replace(" ", ""))
+        except ValueError:
+            continue
+        for line in re.split(rb"\r\n|\n|\r", raw):
+            if len(line) >= 2 and all(32 <= b < 127 for b in line):          # 2 keeps "OK"
+                text = line.decode("ascii")
+                if not any(p.search(text) for p in _FRAGMENT):
+                    out.append([at, text])
+    return out
 
 
 def health(s) -> str:
@@ -78,11 +106,16 @@ def drift_dict(t) -> dict:
     return value
 
 
-def state_dict(s, history: dict | None = None, checkpoints: dict | None = None) -> dict:
+def state_dict(s, history: dict | None = None, checkpoints: dict | None = None, recording: dict | None = None,
+               view_now: float | None = None) -> dict:
     t = s.telemetry
     seen = {kind: s.now - at for kind, at in t.seen.items()}
     return clean({
         "mode": s.mode, "source": s.source, "health": health(s), "now": s.now,
+        # The time the charts are drawn against. It follows the clock while a session runs and stays where the
+        # session ended, so the screen freezes on Stop / end of replay instead of sliding away.
+        "view_now": s.now if view_now is None else view_now,
+        "last_frame_t": None if s.link_age_s is None else s.now - s.link_age_s,
         "link_age_s": s.link_age_s, "can_transmit": s.can_transmit,
         "rx_bytes": s.rx_bytes, "tx_bytes": s.tx_bytes, "valid_frames": s.valid_frames,
         "errors": s.errors, "discarded": s.discarded, "log_directory": s.log_directory,
@@ -95,11 +128,13 @@ def state_dict(s, history: dict | None = None, checkpoints: dict | None = None) 
         "messages": [[at, ch, text] for at, ch, text in t.messages],
         "notices": [[at, text] for at, text in s.notices],
         "terminal": [[at, hexdata, printable(hexdata)] for at, hexdata, _ in s.terminal],
+        "terminal_text": text_lines(s.terminal),
         "image_progress": t.image_progress, "jpeg_size": len(t.jpeg),
         "qlook_version": t.qlook_version,
         "drift": drift_dict(t),
         "history": history or {"imu": [], "atlm": []},
         "checkpoints": checkpoints or {"items": [], "saved": False},
+        "recording": recording or {"on": False, "elapsed": None},
     })
 
 

@@ -20,7 +20,8 @@ from matplotlib.figure import Figure
 
 from .frontends import FrontendUnavailable
 from .service import StationService
-from .transport import TRANSPORTS, list_ports
+from .autodetect import ranked_ports as list_ports
+from .transport import TRANSPORTS
 from .ui_settings import UISettings
 
 class StationWindow:

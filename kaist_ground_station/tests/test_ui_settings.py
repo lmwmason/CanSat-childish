@@ -32,12 +32,30 @@ class UISettingsTests(unittest.TestCase):
         with self.assertRaises(OSError):
             load_ui_settings(Path("/nonexistent/ui.cfg"))
 
+    def test_bluetooth_address_validation_and_normalising(self):
+        self.assertEqual(UISettings().bluetooth_address, "")
+        self.assertEqual(load_ui_settings(self.write("[bluetooth]\naddress = 0001958d78ec\n")).bluetooth_address, "0001958D78EC")
+        self.assertEqual(load_ui_settings(self.write("[bluetooth]\naddress =\n")).bluetooth_address, "")
+        with self.assertRaises(ValueError):
+            load_ui_settings(self.write("[bluetooth]\naddress = 12:34\n"))
+        self.assertFalse(UISettings().bluetooth_auto)
+        self.assertTrue(load_ui_settings(self.write("[bluetooth]\nauto_connect = true\n")).bluetooth_auto)
+        with self.assertRaises(ValueError):
+            load_ui_settings(self.write("[bluetooth]\nauto_connect = maybe\n"))
+
     def test_checkpoint_labels_default_override_and_limits(self):
         self.assertEqual(UISettings().checkpoints[1], "Drop")
         self.assertEqual(load_ui_settings(self.write("[checkpoints]\nlabels = A, B ,C\n")).checkpoints, ["A", "B", "C"])
         self.assertEqual(load_ui_settings(self.write("[checkpoints]\nlabels =\n")).checkpoints, [])
         with self.assertRaises(ValueError):
             load_ui_settings(self.write("[checkpoints]\nlabels = " + ",".join("x%d" % i for i in range(13)) + "\n"))
+
+    def test_record_auto_default_keeps_the_original_behaviour_and_is_configurable(self):
+        self.assertTrue(UISettings().record_auto)                      # code default: record from the first byte
+        self.assertFalse(load_ui_settings(self.write("[recording]\nauto_start = false\n")).record_auto)
+        self.assertTrue(load_ui_settings(self.write("[recording]\nauto_start = yes\n")).record_auto)
+        with self.assertRaises(ValueError):
+            load_ui_settings(self.write("[recording]\nauto_start = sometimes\n"))
 
     def test_open_pages_default_override_and_validation(self):
         self.assertEqual(UISettings().open_pages, ["flight", "wind"])
