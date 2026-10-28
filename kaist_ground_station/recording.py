@@ -9,6 +9,10 @@ from pathlib import Path
 from .protocol import Frame
 
 
+# The example recording --demo replays. Plain data in the same format a real session writes; no program code makes it.
+DEMO_RECORDING = Path(__file__).resolve().parent / "demo" / "traffic.jsonl"
+
+
 class NullRecorder:
     """Stands in while a session is not being recorded: same calls, nothing written."""
     directory = None

@@ -12,7 +12,6 @@ from dataclasses import dataclass
 from pathlib import Path
 import time
 
-from .demo import demo_packet
 from .models import Calibration, Telemetry, load_calibration
 from .protocol import Frame, StreamParser, digital_command, time_command
 from .recording import NullRecorder, Recorder, Replay
@@ -65,7 +64,6 @@ class StationService:
         self.rx_bytes = self.tx_bytes = 0
         self.last_frame = None
         self.started = self.clock()
-        self.last_demo = -1.0
         self.last_flush = self.started
         self.tx_enabled = False
         self.notices.clear()
@@ -75,7 +73,7 @@ class StationService:
         self.notices.append((self.clock(), text))
 
     def configure_calibration(self, path: Path):
-        if self.mode in ("LIVE", "DEMO", "REPLAY"):
+        if self.mode in ("LIVE", "REPLAY"):
             raise ValueError("Stop the session before changing calibration")
         self.calibration = load_calibration(path)
         self.calibration_path = str(path)
@@ -109,7 +107,7 @@ class StationService:
 
     def start_recording(self):
         if self.mode == "IDLE":
-            raise ValueError("Start a session (connect, demo or replay) before recording")
+            raise ValueError("Start a session (connect or replay) before recording")
         if self.recording:
             raise ValueError("Already recording")
         self._begin_recording()
@@ -141,9 +139,6 @@ class StationService:
             transport.close()
             raise
         self.transport = transport
-
-    def start_demo(self):
-        self._start("DEMO", "Simulated KAIST wire packets")
 
     def start_replay(self, path: Path):
         replay = Replay(path)
@@ -230,12 +225,6 @@ class StationService:
         try:
             if self.mode == "LIVE":
                 self._receive(self.transport.read(), now)
-            elif self.mode == "DEMO" and now - self.started - self.last_demo >= 0.2:
-                self.last_demo = now - self.started
-                packet = demo_packet(self.last_demo)
-                # Deliberately exercise fragmented reads in the production parser.
-                self._receive(packet[:17], now)
-                self._receive(packet[17:], now)
             elif self.mode == "REPLAY":
                 for elapsed, data in self.replay.poll(now - self.started):
                     self._receive(data, self.started + elapsed)
@@ -243,7 +232,7 @@ class StationService:
                     self._events(self.parser.expire(now + self.parser.timeout_s), now)
                     self.stop()
                     self.notice("Replay complete (RX only)")
-            if self.mode in ("LIVE", "DEMO", "REPLAY"):
+            if self.mode in ("LIVE", "REPLAY"):
                 self._events(self.parser.expire(now), now)
             if self.recorder and now - self.last_flush >= 1:
                 self.recorder.flush()

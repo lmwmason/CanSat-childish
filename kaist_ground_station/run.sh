@@ -13,7 +13,7 @@ Usage: run.sh [command] [options]
                          If no adapter is found, the UI still opens so you can pick a port by hand.
   live [PORT [BAUD]]     same, optionally with an explicit port, e.g.  run.sh live /dev/rfcomm0
                          Real-hardware sessions are logged under log/kaist-ground-station/hardware/sessions
-  demo                   built-in simulated packets (GPS only climbs, so no drift estimate)
+  demo                   replay the bundled example recording (synthetic; GPS only climbs, so no drift estimate)
   mock [opts]            real GoPro descent + synthetic IMU/ATLM, fills every panel
                            --image FILE.jpg   show a test camera image    --speed N   playback speed
                            --loop             repeat                     --csv FILE  other GPS CSV

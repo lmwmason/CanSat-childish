@@ -45,7 +45,6 @@ class WebServer:
         self.actions = {
             "connect": lambda a: service.connect(str(a["port"]).strip(), int(a["baud"]), str(a.get("kind", "serial"))),
             "stop": lambda a: service.stop(),
-            "demo": lambda a: service.start_demo(),
             "replay": lambda a: service.start_replay(Path(str(a["path"])).expanduser()),
             "calibration": lambda a: service.configure_calibration(Path(str(a["path"])).expanduser()),
             "tx": lambda a: service.enable_transmit(bool(a["enabled"])),

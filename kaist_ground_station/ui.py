@@ -125,7 +125,6 @@ class StationWindow:
         self.baud.pack(side="left", padx=(4, 10))
         self.connect_button = self._button(connections, "연결", self.connect)
         self._button(connections, "정지", self.stop)
-        self._button(connections, "데모", self.demo)
         self._button(connections, "로그 재생", self.replay)
         self._button(connections, "센서 환산 설정", self.calibration)
 
@@ -289,10 +288,6 @@ class StationWindow:
         self.service.stop()
         self.tx_enabled.set(False)
 
-    def demo(self):
-        self.service.start_demo()
-        self.tx_enabled.set(False)
-
     def replay(self):
         path = filedialog.askopenfilename(title="세션의 traffic.jsonl 선택", filetypes=[("Traffic log", "*.jsonl")])
         if path:
@@ -404,7 +399,7 @@ class StationWindow:
         state = s.telemetry
         age = s.link_age_s
         health = "정지" if s.mode=="IDLE" else ("수신 대기" if age is None else ("수신 중" if age<3 else "수신 지연"))
-        self.status.set(f"{s.mode}: {health}" + (" (시뮬레이션)" if s.mode=="DEMO" else ""))
+        self.status.set(f"{s.mode}: {health}")
         self.status_label.configure(foreground=self.c["ok"] if s.mode!="IDLE" and age is not None and age<3 else self.c["warn"])
         gps = state.gps
         alt = gps.get("altitude_m")

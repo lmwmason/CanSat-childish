@@ -11,7 +11,7 @@ from .transport import TRANSPORTS
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     source = parser.add_mutually_exclusive_group()
-    source.add_argument("--demo", action="store_true")
+    source.add_argument("--demo", action="store_true", help="replay the bundled example recording (synthetic data)")
     source.add_argument("--port", help="e.g. /dev/ttyUSB0 or /dev/rfcomm0; \"auto\" picks the kit's USB serial port")
     source.add_argument("--replay", type=Path, help="a session traffic.jsonl (RX only)")
     parser.add_argument("--frontend", choices=list(FRONTENDS), default="web",
@@ -24,9 +24,12 @@ def main(argv=None):
     parser.add_argument("--headless", action="store_true", help="capture without a window")
     parser.add_argument("--duration", type=float, help="stop after N seconds (headless only)")
     args = parser.parse_args(argv)
+    if args.demo:                       # not a mode of the program: just a shortcut for replaying a data file
+        from .recording import DEMO_RECORDING
+        args.replay, args.demo = DEMO_RECORDING, False
     if args.duration is not None and (not args.headless or args.duration <= 0):
         parser.error("--duration requires --headless and a positive number")
-    if args.headless and not (args.demo or args.port or args.replay):
+    if args.headless and not (args.port or args.replay):
         parser.error("headless mode requires --demo, --port, or --replay")
     if args.port == "auto":
         from .autodetect import detect_port
@@ -46,9 +49,7 @@ def main(argv=None):
     try:
         if args.calibration:
             service.configure_calibration(args.calibration)
-        if args.demo:
-            service.start_demo()
-        elif args.port:
+        if args.port:
             service.connect(args.port, args.baud, args.transport)
         elif args.replay:
             service.start_replay(args.replay)

@@ -3,13 +3,13 @@
    add a language by adding a table here and listing it in ui_settings.LANGUAGES. */
 const STR = {
   en: {
-    transport: "Transport", port: "Port", baud: "Baud", connect: "Connect", stop: "Stop", demo: "Demo",
+    transport: "Transport", port: "Port", baud: "Baud", connect: "Connect", stop: "Stop",
     file: "File", filePlaceholder: "traffic.jsonl or csAtlmSet.cfg path", replay: "Replay log", calibration: "Sensor calibration",
     rawBytes: "Raw bytes", serverLost: "Server connection lost", serverGone: "Ground station is not running (its terminal was closed?) - start it again with run.sh",
     phase: "Phase (est.)", elapsed: "Elapsed", utc: "UTC",
     noAlarms: "No alarms", noAlarmsStopped: "No alarms (stopped)", alarmSummary: "Alarms {0} · {1}",
     phStopped: "Stopped", phNoFix: "Waiting for GPS", phEval: "Evaluating", phDescent: "Descending", phAscent: "Ascending", phLevel: "Level",
-    health_idle: "stopped", health_waiting: "waiting", health_receiving: "receiving", health_delayed: "delayed", simulated: "simulated",
+    health_idle: "stopped", health_waiting: "waiting", health_receiving: "receiving", health_delayed: "delayed",
     gpsAlt: "GPS altitude", gpsAltNote: "Raw GPS altitude · not AGL",
     rate: "Descent rate", down: "down", up: "up", rateNote: "Altitude change, last 6 s",
     drift: "Horizontal drift (wind proxy)", driftNote: "Heading toward · {0} s ago · {1} s window", driftNeed: "Needs about {0} s of descent",
@@ -61,13 +61,13 @@ const STR = {
     dirs: ["N", "NE", "E", "SE", "S", "SW", "W", "NW"], start: "start", now: "now"
   },
   ko: {
-    transport: "방식", port: "포트", baud: "보율", connect: "연결", stop: "정지", demo: "데모",
+    transport: "방식", port: "포트", baud: "보율", connect: "연결", stop: "정지",
     file: "파일", filePlaceholder: "traffic.jsonl 또는 csAtlmSet.cfg 경로", replay: "로그 재생", calibration: "센서 환산 설정",
     rawBytes: "원시 바이트", serverLost: "서버 연결 끊김", serverGone: "지상국이 실행 중이 아님 (터미널을 닫았나요?) - run.sh로 다시 켜세요",
     phase: "단계(추정)", elapsed: "경과", utc: "UTC",
     noAlarms: "알람 없음", noAlarmsStopped: "알람 없음 (정지)", alarmSummary: "알람 {0}건 · {1}",
     phStopped: "정지", phNoFix: "GPS 대기", phEval: "판단 중", phDescent: "하강", phAscent: "상승", phLevel: "정지/수평",
-    health_idle: "정지", health_waiting: "수신 대기", health_receiving: "수신 중", health_delayed: "수신 지연", simulated: "시뮬레이션",
+    health_idle: "정지", health_waiting: "수신 대기", health_receiving: "수신 중", health_delayed: "수신 지연",
     gpsAlt: "GPS 고도", gpsAltNote: "GPS 원본 고도 · 지상고 아님",
     rate: "낙하 속도", down: "하강", up: "상승", rateNote: "최근 6초 고도 변화",
     drift: "수평 이동 (바람 대리지표)", driftNote: "향하는 방향 · {0}초 전 기준 · {1}초 창", driftNeed: "하강 중 약 {0}초 이상 필요",

@@ -5,6 +5,8 @@ import unittest
 import urllib.request
 
 from kaist_ground_station.frontends import FRONTENDS, load_frontend
+from kaist_ground_station.recording import DEMO_RECORDING
+from kaist_ground_station.tests.support import RecordedKit
 from kaist_ground_station.service import StationService
 from kaist_ground_station.web.serialize import state_dict
 from kaist_ground_station.web.server import WebServer
@@ -36,7 +38,7 @@ class WebTests(unittest.TestCase):
         self.assertTrue(callable(load_frontend("web")))
 
     def test_state_is_strict_json_and_has_no_raw_bytes(self):
-        self.service.start_demo()
+        self.service.start_replay(DEMO_RECORDING)
         for _ in range(60):
             self.service.tick()
         text = json.dumps(state_dict(self.service.snapshot()), allow_nan=False)
@@ -57,8 +59,8 @@ class WebTests(unittest.TestCase):
         self.assertEqual(get(base + "/api/state")[0], 200)
         self.assertEqual(json.loads(get(base + "/api/state")[1])["mode"], "IDLE")
         self.assertIn("colors", json.loads(get(base + "/api/config")[1]))
-        self.assertEqual(post(base + "/api/action", {"name": "demo"})[0], 200)
-        self.assertEqual(json.loads(get(base + "/api/state")[1])["mode"], "DEMO")
+        self.assertEqual(post(base + "/api/action", {"name": "replay", "path": str(DEMO_RECORDING)})[0], 200)
+        self.assertEqual(json.loads(get(base + "/api/state")[1])["mode"], "REPLAY")
         code, reply = post(base + "/api/action", {"name": "nope"})
         self.assertEqual(code, 400)
         self.assertIn("error", reply)
@@ -105,7 +107,7 @@ class HistoryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             now = [0.0]
             service = StationService(Path(tmp), clock=lambda: now[0])     # the demo paces itself by the clock
-            service.start_demo()
+            service.start_replay(DEMO_RECORDING)
             history = History(maxlen=5)
             for _ in range(80):
                 now[0] += 0.25
@@ -127,12 +129,16 @@ class CheckpointTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.now = [100.0]
         from kaist_ground_station.service import StationService
-        self.service = StationService(Path(self.tmp.name), clock=lambda: self.now[0])
+        self.service = StationService(Path(self.tmp.name), clock=lambda: self.now[0],
+                                      transport_factory=lambda port, baud: RecordedKit(lambda: self.now[0]))
         self.addCleanup(self.service.stop)
+
+    def live(self):
+        self.service.connect("recorded", 115200)
 
     def test_records_time_and_flight_state_and_persists_in_the_session_folder(self):
         from kaist_ground_station.web.checkpoints import Checkpoints, FILENAME
-        self.service.start_demo()
+        self.live()
         for _ in range(20):
             self.now[0] += 0.25
             self.service.tick()
@@ -150,7 +156,7 @@ class CheckpointTests(unittest.TestCase):
 
     def test_undo_removes_only_the_last_and_is_append_only(self):
         from kaist_ground_station.web.checkpoints import Checkpoints, FILENAME
-        self.service.start_demo()
+        self.live()
         marks = Checkpoints(self.service)
         marks.add("A"); marks.add("B")
         self.assertEqual(marks.undo()["label"], "B")
@@ -162,7 +168,7 @@ class CheckpointTests(unittest.TestCase):
 
     def test_unnamed_mark_is_stored_without_a_label_and_keeps_its_number(self):
         from kaist_ground_station.web.checkpoints import Checkpoints
-        self.service.start_demo()
+        self.live()
         marks = Checkpoints(self.service)
         marks.add("Drop")
         row = marks.add(unnamed=True)
@@ -182,11 +188,11 @@ class CheckpointTests(unittest.TestCase):
 
     def test_new_session_starts_a_new_list(self):
         from kaist_ground_station.web.checkpoints import Checkpoints
-        self.service.start_demo()
+        self.live()
         marks = Checkpoints(self.service)
         marks.add("one")
         self.service.stop()
-        self.service.start_demo()                             # new recording folder
+        self.live()                                                           # new recording folder
         self.assertEqual(marks.as_dict()["items"], [])
 
     def test_http_action_round_trip(self):
@@ -194,7 +200,7 @@ class CheckpointTests(unittest.TestCase):
         server.start()
         self.addCleanup(server.stop)
         base = server.url.rstrip("/")
-        self.assertEqual(post(base + "/api/action", {"name": "demo"})[0], 200)
+        self.assertEqual(post(base + "/api/action", {"name": "connect", "port": "recorded", "baud": 115200})[0], 200)
         self.assertEqual(post(base + "/api/action", {"name": "checkpoint", "label": "Drop"})[0], 200)
         state = json.loads(get(base + "/api/state")[1])
         self.assertEqual([c["label"] for c in state["checkpoints"]["items"]], ["Drop"])
@@ -355,7 +361,7 @@ class AutoDialTests(unittest.TestCase):
         from kaist_ground_station.web.server import auto_dial
         with tempfile.TemporaryDirectory() as tmp:
             service = StationService(Path(tmp))
-            service.start_demo()
+            service.start_replay(DEMO_RECORDING)
             self.addCleanup(service.stop)
             server = WebServer(service, UISettings(bluetooth_address="0001958D78EC", bluetooth_auto=True), port=0)
             self.addCleanup(server.httpd.server_close)
@@ -372,9 +378,9 @@ class TerminalTextTests(unittest.TestCase):
         self.assertEqual([l for _, l in got], ["OK", "+BTINQ: 0001958D78EC,KAIST,1F00", "OK", "CONNECT 0001958D78EC"])
 
     def test_telemetry_frames_and_their_fragments_are_not_text(self):
-        from kaist_ground_station.demo import demo_packet
         from kaist_ground_station.web.serialize import text_lines
-        stream = b"".join(demo_packet(t) for t in range(5))
+        lines = DEMO_RECORDING.read_text().splitlines()[:40]                   # real telemetry frames, as recorded
+        stream = b"".join(bytes.fromhex(json.loads(l)["hex"]) for l in lines)
         chunks = [self.entry(stream[i:i + 200]) for i in range(0, len(stream), 200)]    # chunks cut mid-frame, like a serial read
         self.assertEqual(text_lines(chunks), [])
 
@@ -424,7 +430,9 @@ class RecordButtonTests(unittest.TestCase):
         from kaist_ground_station.service import StationService
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.service = StationService(Path(self.tmp.name), auto_record=False)
+        self.now = [100.0]
+        self.service = StationService(Path(self.tmp.name), auto_record=False, clock=lambda: self.now[0],
+                                      transport_factory=lambda port, baud: RecordedKit(lambda: self.now[0]))
         self.addCleanup(self.service.stop)
         server = WebServer(self.service, port=0)
         server.start()
@@ -438,7 +446,7 @@ class RecordButtonTests(unittest.TestCase):
         return post(self.base + "/api/action", body)
 
     def test_state_says_whether_a_session_is_being_kept(self):
-        self.act(name="demo")
+        self.act(name="connect", port="recorded", baud=115200)
         self.assertEqual(self.state()["recording"], {"on": False, "elapsed": None})
         self.assertEqual(self.state()["log_directory"], "")
         self.assertEqual(self.act(name="record_start")[0], 200)
@@ -453,14 +461,14 @@ class RecordButtonTests(unittest.TestCase):
         code, reply = self.act(name="record_start")                # no session yet
         self.assertEqual(code, 400)
         self.assertIn("session", reply["error"])
-        self.act(name="demo")
+        self.act(name="connect", port="recorded", baud=115200)
         code, reply = self.act(name="record_stop")
         self.assertEqual(code, 400)
         self.assertIn("Not recording", reply["error"])
 
     def test_marks_made_before_recording_move_into_the_recording(self):
         from kaist_ground_station.web.checkpoints import FILENAME
-        self.act(name="demo")
+        self.act(name="connect", port="recorded", baud=115200)
         self.act(name="checkpoint", label="Drone ascent start")           # nothing is being kept yet
         self.assertFalse(self.state()["checkpoints"]["saved"])
         self.act(name="record_start")
@@ -482,7 +490,7 @@ class ReplayCheckpointTests(unittest.TestCase):
         from kaist_ground_station.web.checkpoints import FILENAME
         now = [0.0]
         s = StationService(root / "rec", clock=lambda: now[0])
-        s.start_demo()
+        s.start_replay(DEMO_RECORDING)
         for _ in range(80):
             now[0] += 0.25
             s.tick()
@@ -579,7 +587,8 @@ class ReplayEndKeepsMarksTests(unittest.TestCase):
                 marks.add("Drop")                                          # still read-only while that session is on screen
             now[0] += 3600                                                 # an hour later they are still there
             self.assertEqual(len(marks.as_dict()["items"]), 2)
-            replay.start_demo()                                            # a new session replaces them
+            replay.transport_factory = lambda port, baud: RecordedKit(lambda: now[0])
+            replay.connect("recorded", 115200)                                             # a new session replaces them
             after = marks.as_dict()
             self.assertEqual((after["items"], after.get("replay")), ([], None))
 
@@ -597,7 +606,7 @@ class FrozenViewTests(unittest.TestCase):
             server = WebServer(service, port=0)
             self.addCleanup(server.httpd.server_close)
             state = lambda: json.loads(server.state_json)
-            service.start_demo()
+            service.start_replay(DEMO_RECORDING)
             for _ in range(8):
                 now[0] += 0.5
                 server._publish()
@@ -612,7 +621,7 @@ class FrozenViewTests(unittest.TestCase):
             self.assertGreater(later["now"], stopped_at + 100)
             self.assertEqual(later["view_now"], stopped_at)                          # the picture did not move
             self.assertAlmostEqual(stopped_at, running["now"], delta=0.6)            # and froze at the end, not at zero
-            service.start_demo()                                                     # a new session resumes the clock
+            service.start_replay(DEMO_RECORDING)                                                     # a new session resumes the clock
             now[0] += 1
             server._publish()
             self.assertEqual(state()["view_now"], state()["now"])
@@ -626,7 +635,7 @@ class FrozenViewTests(unittest.TestCase):
             self.addCleanup(service.stop)
             server = WebServer(service, port=0)
             self.addCleanup(server.httpd.server_close)
-            service.start_demo()
+            service.start_replay(DEMO_RECORDING)
             for _ in range(6):
                 now[0] += 0.5
                 server._publish()

@@ -743,7 +743,7 @@ function update() {
   lastDrift = D;
   const age = s.mode === "IDLE" && s.last_frame_t != null ? Math.max(0, now - s.last_frame_t) : s.link_age_s;   // frozen after Stop too, never negative
   const live = s.mode !== "IDLE" && age != null && age < 3;
-  $("status").textContent = `${s.mode}: ${t("health_" + s.health)}` + (s.mode === "DEMO" ? ` (${t("simulated")})` : "");
+  $("status").textContent = `${s.mode}: ${t("health_" + s.health)}`;
   $("status").style.color = live ? css("ok") : css("warn");
 
   const gps = s.gps || {}, rate = D.d.descent_rate;

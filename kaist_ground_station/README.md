@@ -78,7 +78,7 @@ DTLM 등 실제 수신 상태가 바뀌었는지 확인한다.
 
 기본 저장 위치는 현재 작업 디렉터리의 `log/kaist-ground-station/sessions/`다.
 루트 `.gitignore`에 따라 `log/`는 커밋되지 않는다. `--log-dir`로 변경할 수 있다.
-LIVE / DEMO / REPLAY는 각각 별도 세션 폴더로 분리한다.
+LIVE / REPLAY는 각각 별도 세션 폴더로 분리한다.
 
 | 파일 | 내용 |
 | --- | --- |
@@ -112,8 +112,8 @@ service.py             연결 수명·모드·송신 조건·세션 기록 조�
   ├─ transport.py      직렬 read/write / 포트 목록
   ├─ protocol.py       바이트 스트림 → Frame / 명령 → 바이트
   ├─ models.py         텔레메트리 상태 / 보정 설정
-  ├─ recording.py      원시 트래픽·CSV·이미지·재생
-  └─ demo.py           합성 바이트 (실제 parser를 통과)
+  └─ recording.py      원시 트래픽·CSV·이미지·재생
+demo/traffic.jsonl     예시 녹화 (합성 바이트, 데이터 파일). --demo는 이걸 재생하는 단축 옵션
 __main__.py            실행 옵션 / GUI 또는 headless 조립
 ```
 

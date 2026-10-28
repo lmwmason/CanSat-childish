@@ -9,13 +9,14 @@ import unittest
 class UITests(unittest.TestCase):
     def test_demo_tree_is_visible_and_controls_fit_laptop_window(self):
         import tkinter as tk
+        from kaist_ground_station.recording import DEMO_RECORDING
         from kaist_ground_station.service import StationService
         from kaist_ground_station.ui import StationWindow
         with tempfile.TemporaryDirectory() as tmp:
             root = tk.Tk()
             service = StationService(Path(tmp))
             try:
-                service.start_demo()
+                service.start_replay(DEMO_RECORDING)
                 window = StationWindow(root,service)
                 root.update()
                 window._render(service.snapshot())

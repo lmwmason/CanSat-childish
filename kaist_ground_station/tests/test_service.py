@@ -6,6 +6,7 @@ import tempfile
 import unittest
 
 from kaist_ground_station.models import load_calibration
+from kaist_ground_station.recording import DEMO_RECORDING
 from kaist_ground_station.service import StationService
 from kaist_ground_station.tests.test_protocol import ATLM, GPS
 
@@ -73,7 +74,7 @@ class ServiceTests(unittest.TestCase):
         s.enable_transmit(True)
         self.port.incoming = GPS
         s.tick()
-        s.start_demo()
+        s.start_replay(DEMO_RECORDING)
         self.assertFalse(s.snapshot().can_transmit)
         self.assertFalse(s.snapshot().telemetry.gps)
         self.assertTrue(self.port.closed)
@@ -86,7 +87,7 @@ class ServiceTests(unittest.TestCase):
         cfg = Path(self.tmp.name)/"csAtlmSet.cfg"
         cfg.write_text("# header\n7,1,0.0815053,0,V\n")
         self.service.configure_calibration(cfg)
-        self.service.start_demo()
+        self.service.start_replay(DEMO_RECORDING)
         self.service.tick()
         s = self.service.snapshot()
         self.assertAlmostEqual(s.calibration[7].apply(s.telemetry.atlm[7]),7.580,places=3)

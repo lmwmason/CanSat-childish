@@ -4,6 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
+from kaist_ground_station.recording import DEMO_RECORDING
 from kaist_ground_station.service import StationService
 
 
@@ -37,13 +38,13 @@ class RecordingControlTests(unittest.TestCase):
 
     def test_default_still_records_from_the_first_byte(self):
         s = self.service()
-        s.start_demo()
+        s.start_replay(DEMO_RECORDING)
         self.assertTrue(s.recording)
         self.assertEqual(len(self.folders()), 1)
 
     def test_without_auto_record_the_session_runs_but_nothing_is_written(self):
         s = self.service(auto_record=False)
-        s.start_demo()
+        s.start_replay(DEMO_RECORDING)
         self.run_for(s, 3)
         self.assertEqual(self.folders(), [])
         self.assertFalse(s.recording)
@@ -53,7 +54,7 @@ class RecordingControlTests(unittest.TestCase):
 
     def test_start_mid_session_keeps_only_what_follows_and_times_start_at_zero(self):
         s = self.service(auto_record=False)
-        s.start_demo()
+        s.start_replay(DEMO_RECORDING)
         self.run_for(s, 30)                                                  # 30 s before anyone pressed Record
         s.start_recording()
         self.assertTrue(s.recording)
@@ -69,7 +70,7 @@ class RecordingControlTests(unittest.TestCase):
 
     def test_stop_recording_keeps_the_session_alive_and_stops_writing(self):
         s = self.service(auto_record=False)
-        s.start_demo()
+        s.start_replay(DEMO_RECORDING)
         s.start_recording()
         self.run_for(s, 3)
         s.stop_recording()
@@ -77,7 +78,7 @@ class RecordingControlTests(unittest.TestCase):
         size = (folder / "rx.bin").stat().st_size
         self.assertGreater(size, 0)
         self.run_for(s, 3)
-        self.assertEqual(s.mode, "DEMO")                                     # still receiving and displaying
+        self.assertEqual(s.mode, "REPLAY")                                     # still receiving and displaying
         self.assertEqual((folder / "rx.bin").stat().st_size, size)           # but no longer being kept
         s.start_recording()                                                  # a second, separate recording
         self.assertEqual(len(self.folders()), 2)
@@ -86,7 +87,7 @@ class RecordingControlTests(unittest.TestCase):
         s = self.service(auto_record=False)
         with self.assertRaises(ValueError):
             s.start_recording()                                              # no session yet
-        s.start_demo()
+        s.start_replay(DEMO_RECORDING)
         with self.assertRaises(ValueError):
             s.stop_recording()                                               # nothing to stop
         s.start_recording()
@@ -95,7 +96,7 @@ class RecordingControlTests(unittest.TestCase):
 
     def test_ending_the_session_closes_the_recording(self):
         s = self.service(auto_record=False)
-        s.start_demo()
+        s.start_replay(DEMO_RECORDING)
         s.start_recording()
         s.stop()
         self.assertFalse(s.recording)
@@ -103,7 +104,7 @@ class RecordingControlTests(unittest.TestCase):
 
     def test_a_late_started_recording_replays_without_waiting(self):
         s = self.service(auto_record=False)
-        s.start_demo()
+        s.start_replay(DEMO_RECORDING)
         self.run_for(s, 20)
         s.start_recording()
         self.run_for(s, 4)
