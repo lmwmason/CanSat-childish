@@ -99,9 +99,10 @@ class WebServer:
         self.history.update(snap)
         self.state_json = json.dumps(state_dict(snap, self.history.as_dict(), marks, rec, self._view_now), allow_nan=False, ensure_ascii=False).encode()
         self.jpeg = snap.telemetry.jpeg
-        if snap.telemetry.qlook_version != self._qlook_version:
-            self._qlook_version = snap.telemetry.qlook_version
-            self.qlook = qlook_png(snap.telemetry.qlook) if self._qlook_version else b""
+        qlook_version = (snap.session_id, snap.telemetry.qlook_version)
+        if qlook_version != self._qlook_version:
+            self._qlook_version = qlook_version
+            self.qlook = qlook_png(snap.telemetry.qlook) if snap.telemetry.qlook_version else b""
 
     def _tick_loop(self):
         while not self.stop_event.wait(TICK_S):

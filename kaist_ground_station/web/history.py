@@ -24,8 +24,17 @@ class History:
         self.atlm = deque(maxlen=maxlen)     # [t, ch0 ... ch7]
         self._seen = {"IMU": None, "ATLM": None}
         self._prev = None
+        self._session_id = None
 
     def update(self, snap) -> None:
+        session_id = getattr(snap, "session_id", 0)
+        if session_id != self._session_id:
+            self._session_id = session_id
+            self.imu.clear()
+            self.omega.clear()
+            self.atlm.clear()
+            self._seen = {"IMU": None, "ATLM": None}
+            self._prev = None
         t, counts = snap.telemetry, snap.telemetry.counts
         if len(t.imu) >= 3 and counts.get("IMU") != self._seen["IMU"]:
             self._seen["IMU"] = counts.get("IMU")

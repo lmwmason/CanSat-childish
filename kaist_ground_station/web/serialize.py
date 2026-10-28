@@ -111,7 +111,7 @@ def state_dict(s, history: dict | None = None, checkpoints: dict | None = None, 
     t = s.telemetry
     seen = {kind: s.now - at for kind, at in t.seen.items()}
     return clean({
-        "mode": s.mode, "source": s.source, "health": health(s), "now": s.now,
+        "mode": s.mode, "source": s.source, "session_id": s.session_id, "health": health(s), "now": s.now,
         # The time the charts are drawn against. It follows the clock while a session runs and stays where the
         # session ended, so the screen freezes on Stop / end of replay instead of sliding away.
         "view_now": s.now if view_now is None else view_now,
@@ -130,6 +130,7 @@ def state_dict(s, history: dict | None = None, checkpoints: dict | None = None, 
         "terminal": [[at, hexdata, printable(hexdata)] for at, hexdata, _ in s.terminal],
         "terminal_text": text_lines(s.terminal),
         "image_progress": t.image_progress, "jpeg_size": len(t.jpeg),
+        "jpeg_version": f"{s.session_id}:{t.counts.get('IMAGE', 0)}",
         "qlook_version": t.qlook_version,
         "drift": drift_dict(t),
         "history": history or {"imu": [], "atlm": []},

@@ -1,6 +1,6 @@
 """Operator checkpoints ("drone ascent start", "drop", ...): timestamped marks stored with the session.
 
-Presentation-layer only: it reads the service's clock/GPS and the session folder name, and writes
+Presentation-layer only: it reads the service's clock/GPS and session identity, and writes
 its own file (checkpoints.jsonl) next to the service's recording. Nothing in the service changes.
 Undo appends a tombstone instead of rewriting, so the file stays an honest append-only record.
 """
@@ -18,23 +18,29 @@ class Checkpoints:
     def __init__(self, service):
         self.service = service
         self._dir = None
+        self._session_id = None
         self.items: list[dict] = []
         self._replay_key = None
         self._replay_rows: list[tuple[float, dict]] = []
 
-    # the list belongs to one session: a new session folder starts a new list
+    # A session can have no recording or several recording folders. Its marks
+    # stay in memory across recording toggles and reset only on a new session.
     def _sync(self) -> None:
         directory = self.service.log_directory or ""
+        session_id = self.service.session_id
+        if session_id != self._session_id:
+            self._session_id, self._dir = session_id, directory
+            self.items = self._load(directory)
+            self._replay_key, self._replay_rows = None, []
+            return
         if directory == self._dir:
             return
-        previous, self._dir = self._dir, directory
-        if previous == "" and directory and self.items:
-            # Recording just started: marks made while nothing was being kept were only in memory. They are
-            # real events of this run, so they move into the new folder (flagged) instead of being dropped.
+        self._dir = directory
+        if directory:
+            # Keep all marks from this run in each new recording, including marks
+            # made while recording was off. Never modify a stopped recording.
             for row in self.items:
                 self._append({**row, "before_recording": True})
-            return
-        self.items = self._load(directory)
 
     @staticmethod
     def _load(directory: str) -> list[dict]:

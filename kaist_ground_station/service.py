@@ -36,6 +36,7 @@ class Snapshot:
     notices: tuple
     terminal: tuple
     can_transmit: bool
+    session_id: int = 0
 
 
 class StationService:
@@ -46,6 +47,7 @@ class StationService:
         self.clock = clock
         self.transport_factory = transport_factory  # test override; wins over the kind registry
         self.mode = "IDLE"
+        self.session_id = 0             # changes on a new session, never on recording toggles or Stop
         self.source = ""
         self.transport: Transport | None = None
         self.replay = None
@@ -82,6 +84,7 @@ class StationService:
     def _start(self, mode, source):
         self.stop()
         self._reset()
+        self.session_id += 1
         self.mode, self.source = mode, source
         self.recorder, self.log_directory, self.rec_origin = NullRecorder(), "", None
         if self.auto_record:
@@ -248,4 +251,4 @@ class StationService:
                         self.rx_bytes, self.tx_bytes, self.parser.frames_ok, self.parser.errors,
                         self.parser.discarded, None if self.last_frame is None else now-self.last_frame,
                         now, self.log_directory, tuple(self.notices), tuple(self.terminal),
-                        bool(self.mode == "LIVE" and self.tx_enabled))
+                        bool(self.mode == "LIVE" and self.tx_enabled), self.session_id)

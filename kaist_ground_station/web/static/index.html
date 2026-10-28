@@ -850,14 +850,14 @@ function renderMotion(s, D, now) {
   $("st-vel").textContent = last ? `H ${Math.hypot(last[1], last[2]).toFixed(1)}  V ${last[3].toFixed(1)}  m/s` : "";
 }
 function renderCamera(s) {
-  const jp = $("jpeg"), jv = "/api/jpeg?v=" + s.jpeg_size;
+  const jp = $("jpeg"), jv = "/api/jpeg?v=" + encodeURIComponent(s.jpeg_version);
   if (s.jpeg_size && jp.dataset.v !== jv) { jp.dataset.v = jv; jp.src = jv; }
   jp.hidden = !s.jpeg_size; $("cam-empty").textContent = s.jpeg_size ? "" : t("camWait");
   // The progress bar moves while pieces arrive even when an image never completes, so say how old the picture is.
   const age = ageOf(s, "IMAGE");
   $("st-cam").textContent = s.jpeg_size ? `${(s.jpeg_size / 1024).toFixed(0)} KiB` + (age == null ? "" : ` · ${t("imgAge", age.toFixed(0))}`) : "";
   $("st-cam").style.color = age != null && age > 6 ? css("warn") : "";
-  const qp = $("qlook"), qv = "/api/qlook.png?v=" + s.qlook_version;
+  const qp = $("qlook"), qv = "/api/qlook.png?v=" + s.session_id + ":" + s.qlook_version;
   if (s.qlook_version && qp.dataset.v !== qv) { qp.dataset.v = qv; qp.src = qv; }
   qp.hidden = !s.qlook_version; $("qlook-empty").textContent = s.qlook_version ? "" : t("qlookWait");
 }
