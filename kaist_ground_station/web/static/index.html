@@ -215,7 +215,8 @@ document.body.dataset.page = PAGE;
 let MARKS = [];                       // [service time, label] of recorded checkpoints, drawn on the time charts
 let cfg = null, S = null, busy = false, errTimer = 0, lastDrift = null;
 const view = { yaw: -0.65, pitch: 0.5, zoom: 1 };
-const rateLog = [], alarmState = new Map(), errorLog = [], txLog = [];
+let rateSession = null;
+const RATE_WINDOW = 10, rateLog = [], rateHeld = {}, alarmState = new Map(), errorLog = [], txLog = [];
 let metStart = null, lastMode = null, cloudCache = { key:null, pts:[] };
 
 /* ---------- text ---------- */
@@ -634,15 +635,17 @@ function renderLinkQuality(q, s) {
   if (s.mode === "IDLE" || q.span < 3) { chip.className = "chip"; chip.innerHTML = `<small>${t("linkQ")}</small>—`; chip.title = t("linkQTitle", Q_WINDOW); return; }
   const lvl = q.worst == null ? "" : q.worst < A.quality_bad_pct ? "bad" : q.worst < A.quality_warn_pct ? "warn" : "ok";
   const pct = q.worst == null ? "…" : q.worst.toFixed(0) + "%";
+  const rates = ["GPS", "IMU", "ATLM"].map(k => rateHeld[k]).filter(v => v != null);
+  const hz = rates.length ? ` · ${(rates.reduce((a, b) => a + b, 0) / rates.length).toFixed(2)} Hz` : "";
   const img = q.imagePct == null ? "" : ` · img ${q.done}/${q.started}`;
   chip.className = "chip " + lvl;
-  chip.innerHTML = `<small>${t("linkQ")}</small>${pct}${img} · ${q.kbps == null ? "—" : q.kbps.toFixed(1)} KB/s`;
+  chip.innerHTML = `<small>${t("linkQ")}</small>${pct}${img}${hz} · ${q.kbps == null ? "—" : q.kbps.toFixed(1)} KB/s`;
   chip.title = t("linkQTitle", Q_WINDOW) + `\n${t("frames")}: ${q.frames - q.bad}/${q.frames}` + (q.imagePct == null ? "" : `\n${t("images")}: ${q.done}/${q.started}`) + `\n${t("badFrames")}: ${q.bad} · ${t("discardedB")}: ${q.discarded} B`;
 }
 
 /* ---------- stream table, alarms, phase ---------- */
 function rateOf(kind, now, counts) {
-  while (rateLog.length > 1 && now - rateLog[0][0] > 6) rateLog.shift();
+  while (rateLog.length > 1 && now - rateLog[0][0] > RATE_WINDOW) rateLog.shift();
   const old = rateLog[0];
   if (!old || now - old[0] < 1) return null;
   return ((counts[kind] || 0) - (old[1][kind] || 0)) / (now - old[0]);
@@ -650,12 +653,16 @@ function rateOf(kind, now, counts) {
 const ledClass = age => age == null ? "" : age < 3 ? "ok" : age < 10 ? "warn" : "bad";
 function renderStreams(s) {
   const now = s.now;
-  rateLog.push([now, { ...s.counts }]);
+  if (s.session_id !== rateSession) { rateSession = s.session_id; rateLog.length = 0; for (const k in rateHeld) delete rateHeld[k]; }
+  const running = s.mode !== "IDLE";                 // after Stop / end of replay the last rates stay on screen
+  if (running) rateLog.push([now, { ...s.counts }]); else if (!Object.keys(rateHeld).length) rateLog.length = 0;
   const kinds = [...KINDS.filter(k => k in s.counts || k in s.seen_age || STREAMING.includes(k)), ...Object.keys(s.counts).filter(k => !KINDS.includes(k))];
   const rows = kinds.map(k => {
-    const age = ageOf(s, k), r = rateOf(k, now, s.counts);
+    const age = ageOf(s, k);
+    if (running) rateHeld[k] = rateOf(k, now, s.counts);
+    const r = rateHeld[k] ?? null;
     const led = k === "ERROR" ? ((s.counts.ERROR || 0) ? "bad" : "ok") : ledClass(age);
-    return `<tr><td><i class="led ${led}"></i></td><td>${KINDS.includes(k) ? t("s_" + k) : k}</td><td class="n">${age == null ? "—" : age.toFixed(1) + " s"}</td><td class="n">${s.counts[k] || 0}</td><td class="n">${r == null ? "—" : r.toFixed(1) + " /s"}</td></tr>`;
+    return `<tr><td><i class="led ${led}"></i></td><td>${KINDS.includes(k) ? t("s_" + k) : k}</td><td class="n">${age == null ? "—" : age.toFixed(1) + " s"}</td><td class="n">${s.counts[k] || 0}</td><td class="n">${r == null ? "—" : r.toFixed(2) + " /s"}</td></tr>`;
   }).join("");
   $("st-stream").textContent = t("streamTotals", (s.rx_bytes / 1024).toFixed(1), s.tx_bytes, s.valid_frames, s.errors, s.discarded);
   const html = `<tr><th></th><th>${t("colStream")}</th><th>${t("colLast")}</th><th>${t("colTotal")}</th><th>${t("colRate")}</th></tr>${rows}`;
