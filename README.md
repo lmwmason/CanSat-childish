@@ -27,6 +27,9 @@ The repository holds every part of the system:
 - **Ground station** — a PyQt6 desktop app (Mission Planner style) that runs on a
   Raspberry Pi with a Crossfire Micro TX V2, or on a normal PC. Live flight view,
   ground track, CSV recording and the AUX switches of the mother.
+- **KAIST kit ground station** — a second, independent ground station for the
+  official KAIST CanSat kit. It runs as a small local web server and shows the
+  flight and the wind field in two browser windows side by side.
 - **Simulator** — the flight logic as a hardware-independent C core, run on a
   rigid-body physics engine, with a live 3D viewer.
 - **PCB** — the KiCad project of the mother board.
@@ -56,6 +59,7 @@ constant in the source and can be tuned.
 - **Sensors on the mother:** MPU6050 + ICM-42688 (I2C), u-blox NEO-6M GPS (I2C / DDC), TBS Crossfire receiver (CRSF, UART)
 - **Child firmware:** C++ / Arduino framework with [PlatformIO](https://platformio.org/); BMP280, MPU6050 (on-chip DMP), DHT11
 - **Ground station:** Python 3, [PyQt6](https://www.riverbankcomputing.com/software/pyqt/) (Qt Serial Port), [PyInstaller](https://pyinstaller.org/) and AppImage for releases
+- **KAIST kit ground station:** Python 3 (standard-library HTTP server, numpy, Pillow, pyserial), a plain HTML / canvas browser UI; `windField/` for the wind estimate
 - **Simulator:** C11, [Open Dynamics Engine](https://www.ode.org/), Python with matplotlib / numpy for the viewer
 - **Hardware design:** [KiCad](https://www.kicad.org/)
 
@@ -108,6 +112,40 @@ tools/make_appimage.sh
 Pushing a tag named `gui-vX.Y.Z` makes GitHub Actions
 ([`gui-release.yml`](./.github/workflows/gui-release.yml)) build the AppImages
 for aarch64 and x86_64 and the Windows zip, and publish them as a release.
+
+### KAIST kit ground station
+
+A separate program from the one above, for the official KAIST CanSat kit (GPS,
+IMU, ATLM / DTLM channels, camera). It needs Python 3 with numpy, Pillow and
+pyserial, and a browser.
+
+```bash
+python3 -m venv kaist_ground_station/.venv
+kaist_ground_station/.venv/bin/pip install -r kaist_ground_station/requirements.txt
+./kaist_ground_station/run.sh
+```
+
+`run.sh` finds the USB serial adapter, connects at 115200 baud, dials the kit's
+Bluetooth address from the config and opens two windows: the flight and control
+page at `http://127.0.0.1:8765/` and the wind-field page at `/wind`. If no
+adapter is found the UI still opens so a port can be picked by hand.
+
+| Command | What it does |
+| ------- | ------------ |
+| `run.sh` / `run.sh live [PORT]` | Connect to the kit |
+| `run.sh demo` | Replay the bundled example recording, no hardware needed |
+| `run.sh replay FILE` | Replay a recorded `traffic.jsonl` |
+| `run.sh mock` | Fake kit built from a real GoPro descent, for trying the UI |
+| `run.sh headless` | Capture without a window |
+| `run.sh test` | Run the unit tests |
+
+Nothing is recorded until **Record** is pressed (or `auto_start` is set).
+Checkpoints such as *Drop* or *Parachute open* are saved with the recording and
+shown again in a replay. Language, colors, fonts, alarm limits, checkpoint
+buttons, the Bluetooth address and the windows to open are all in
+[`kaist_ground_station/config/ui.cfg`](./kaist_ground_station/config/ui.cfg).
+Protocol notes and the hardware test steps are in
+[`kaist_ground_station/`](./kaist_ground_station/).
 
 ### Mother firmware
 
@@ -168,6 +206,12 @@ guiTool/
   tests/                   Frame-format tests against the real firmware output
   tools/                   Packaging scripts (AppImage, .pyz, Raspberry Pi launcher)
   pinmap.md                Wiring Raspberry Pi <-> Crossfire TX module
+kaist_ground_station/      Ground station for the KAIST kit (web UI)
+  web/                     HTTP server and the browser page
+  config/                  ui.cfg (language, colors, alarms, checkpoints)
+  demo/                    Bundled example recording for `run.sh demo`
+  tools/                   Mock kit for trying the UI without hardware
+windField/                 Wind estimate from GPS descents, used by the KAIST ground station
 simulator/
   core/                    Hardware-independent flight logic in C
   sim/                     Mothership and child simulations (physics)
@@ -185,6 +229,10 @@ frames the firmware produces are decoded correctly by the ground station, and th
 mission logic was simulated. They have **not yet been tested end to end on the
 real hardware**. The mother's pin assignments are chosen in `pinmap.md`, and the
 Crossfire module pins should be checked before powering anything.
+
+The KAIST kit ground station has received and recorded real flights from the kit
+over its Bluetooth link. The kit sends GPS, IMU and ATLM about every 2 seconds
+because its single transmit queue is shared with the camera image.
 
 ## License
 
