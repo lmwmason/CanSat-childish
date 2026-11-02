@@ -1,0 +1,21 @@
+DHT11 Temprature and Humidity Sensor value read and display  ATLM 
+
+// Referance Source //
+csAtlm.c
+csAtlm.h
+csAtlmOp.c
+
+// Read Files ?
+csDHT11_to_Atlm.c
+csDHT11_to_Atlm.h
+csDHT11_to_Atlm_Op.c
+Cansat_LOOP_DHT11_to_ATLM.c
+
+// UNO is OK 
+// need check CANSAT, ( current the value is 0 )
+// use the Delay Time ==> Data can Get
+// 
+// #define V_CLOCK_TIME_CONV(macV) ( (macV) * 8 / 11 ) 
+// #define DHT11_WAIT_COUNT (V_CLOCK_TIME_CONV(10000))
+
+
