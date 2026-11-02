@@ -1,0 +1,4 @@
+numpy>=1.24
+Pillow>=10,<13
+rasterio>=1.3,<2
+pyrothermel==0.1.4
