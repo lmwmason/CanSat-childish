@@ -1,0 +1,57 @@
+{
+  "format": 1,
+  "mode": "LIVE",
+  "source": "/dev/ttyUSB0 / 115200 8N1",
+  "started_utc": "20261102T225456.865452Z",
+  "hardware_verified": false,
+  "calibration": [
+    {
+      "enabled": false,
+      "a": 1.0,
+      "b": 0.0,
+      "unit": "raw"
+    },
+    {
+      "enabled": false,
+      "a": 1.0,
+      "b": 0.0,
+      "unit": "raw"
+    },
+    {
+      "enabled": false,
+      "a": 1.0,
+      "b": 0.0,
+      "unit": "raw"
+    },
+    {
+      "enabled": false,
+      "a": 1.0,
+      "b": 0.0,
+      "unit": "raw"
+    },
+    {
+      "enabled": false,
+      "a": 1.0,
+      "b": 0.0,
+      "unit": "raw"
+    },
+    {
+      "enabled": false,
+      "a": 1.0,
+      "b": 0.0,
+      "unit": "raw"
+    },
+    {
+      "enabled": false,
+      "a": 1.0,
+      "b": 0.0,
+      "unit": "raw"
+    },
+    {
+      "enabled": false,
+      "a": 1.0,
+      "b": 0.0,
+      "unit": "raw"
+    }
+  ]
+}
