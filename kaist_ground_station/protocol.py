@@ -202,7 +202,7 @@ class StreamParser:
                         size = offset + marker + 1
                 elif self.buffer[3] != 0:
                     raise ValueError("Invalid reserved header byte")
-                elif kind == 0x36:
+                elif kind in (0x31, 0x36):
                     size = 5
                 elif kind == 0x34:
                     size = 9
@@ -272,10 +272,11 @@ class StreamParser:
                 raise ValueError("LIFESIGN checksum mismatch")
             return Frame("LIFESIGN", {"satellite_time_raw": int.from_bytes(raw[4:8], "big"),
                                       "uptime_s": int.from_bytes(raw[8:12], "big")}, raw, True)
-        if kind == 0x36:
+        if kind in (0x31, 0x36):
             if raw[4] != 0:
                 raise ValueError("Unsupported camera acknowledgement status")
-            return Frame("CAMERA_ACK", {"command": "capture_control", "status": raw[4]}, raw)
+            command = "image_settings" if kind == 0x31 else "capture_control"
+            return Frame("CAMERA_ACK", {"command": command, "status": raw[4]}, raw)
         if kind == 0x40:
             offset = 4 if raw[3] else 5
             values = raw[offset:-1]

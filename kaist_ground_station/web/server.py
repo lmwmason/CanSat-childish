@@ -1,8 +1,8 @@
 """Browser frontend: a tiny stdlib HTTP server around a StationService.
 
-The service is single-threaded by design, so one lock guards every call into it. A tick thread
-drives the service and publishes the latest state; request handlers only read that published copy
-or run a user action under the lock. No wire protocol, serial or logging code lives here.
+One lock serializes calls into the service. A dedicated receiver drives it independently
+of snapshot analysis and JSON publication, so a slow wind estimate cannot stop serial reads.
+Request handlers read the published copy or run a user action under the service lock.
 """
 from __future__ import annotations
 
@@ -26,6 +26,7 @@ STATIC = Path(__file__).resolve().parent / "static"
 STATIC_FILES = {"/i18n.js": ("i18n.js", "text/javascript; charset=utf-8"), "/logo.png": ("logo.png", "image/png")}   # explicit list: no path traversal
 DEFAULT_PORT = 8765
 TICK_S = 0.1
+RECEIVE_S = 0.02
 MAX_BODY = 64 * 1024
 
 
@@ -34,6 +35,7 @@ class WebServer:
                  host: str = "127.0.0.1", port: int = DEFAULT_PORT):
         self.service, self.settings = service, settings or UISettings()
         self.lock = threading.Lock()
+        self._publish_lock = threading.Lock()
         self.stop_event = threading.Event()
         self.state_json = b"{}"
         self.jpeg = b""
@@ -53,6 +55,7 @@ class WebServer:
             "bt_scan": lambda a: self._adapter_line("AT+BTINQ?"),
             "bt_connect": lambda a: self._adapter_line(self._dial()),
             "checkpoint": lambda a: self.checkpoints.add(str(a["label"])),
+            "parachute_open": lambda a: self._parachute_open(),
             "record_start": lambda a: service.start_recording(),
             "record_stop": lambda a: service.stop_recording(),
             "checkpoint_mark": lambda a: self.checkpoints.add(unnamed=True),
@@ -64,6 +67,16 @@ class WebServer:
         self.address = self.httpd.server_address
         self._threads = []
         self._publish()
+
+    def _parachute_open(self):
+        """One explicit live action: deploy, then mark the requested event."""
+        previous = self.service.tx_enabled
+        try:
+            self.service.enable_transmit(True)  # also rejects IDLE/REPLAY
+            self.service.send_command(71, 180)
+        finally:
+            self.service.enable_transmit(previous if self.service.mode == "LIVE" else False)
+        self.checkpoints.add("Parachute open")
 
     # -- Bluetooth adapter -------------------------------------------------------------------
     def _dial(self) -> str:
@@ -88,8 +101,13 @@ class WebServer:
 
     # -- publishing -------------------------------------------------------------------------
     def _publish(self):
+        # HTTP actions can also request publication. Serialize the view caches,
+        # but never hold the service lock while computing wind or encoding JSON.
+        with self._publish_lock:
+            self._publish_state()
+
+    def _publish_state(self):
         with self.lock:
-            self.service.tick()
             snap = self.service.snapshot()
             marks = self.checkpoints.as_dict()
             rec = {"on": self.service.recording,
@@ -97,12 +115,30 @@ class WebServer:
         if snap.mode != "IDLE" or self._view_now is None:
             self._view_now = snap.now                   # stops advancing the moment the session ends
         self.history.update(snap)
-        self.state_json = json.dumps(state_dict(snap, self.history.as_dict(), marks, rec, self._view_now), allow_nan=False, ensure_ascii=False).encode()
-        self.jpeg = snap.telemetry.jpeg
+        state_json = json.dumps(state_dict(snap, self.history.as_dict(), marks, rec, self._view_now), allow_nan=False, ensure_ascii=False).encode()
+        qlook = self.qlook
         qlook_version = (snap.session_id, snap.telemetry.qlook_version)
         if qlook_version != self._qlook_version:
+            qlook = qlook_png(snap.telemetry.qlook) if snap.telemetry.qlook_version else b""
+        with self.lock:
+            # A connect/replay action may have replaced the session during a
+            # slow calculation. Never publish its predecessor over the new run.
+            if snap.session_id != self.service.session_id:
+                return
+            self.state_json = state_json
+            self.jpeg = snap.telemetry.jpeg
+            self.qlook = qlook
             self._qlook_version = qlook_version
-            self.qlook = qlook_png(snap.telemetry.qlook) if snap.telemetry.qlook_version else b""
+
+    def _receive_loop(self):
+        while not self.stop_event.is_set():
+            try:
+                with self.lock:
+                    self.service.tick()
+            except Exception as exc:
+                with self.lock:
+                    self.service.notice(f"Receiver error: {exc}")
+            self.stop_event.wait(RECEIVE_S)
 
     def _tick_loop(self):
         while not self.stop_event.wait(TICK_S):
@@ -181,7 +217,7 @@ class WebServer:
 
     # -- lifecycle --------------------------------------------------------------------------
     def start(self):
-        for target in (self._tick_loop, self.httpd.serve_forever):
+        for target in (self._receive_loop, self._tick_loop, self.httpd.serve_forever):
             thread = threading.Thread(target=target, daemon=True)
             thread.start()
             self._threads.append(thread)
@@ -190,6 +226,8 @@ class WebServer:
         self.stop_event.set()
         self.httpd.shutdown()
         self.httpd.server_close()
+        for thread in self._threads:
+            thread.join(timeout=2)
 
     @property
     def url(self) -> str:

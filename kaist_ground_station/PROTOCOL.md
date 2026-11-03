@@ -37,6 +37,8 @@ PDF나 실행파일 원본은 이 폴더에 재배포하지 않는다.
 | QLOOK | `76 00 80 n Xlo Xhi Ylo Yhi [pixels]` | PDF p.11, 체크섬 없음 |
 | JPEG size | `76 00 34 00 04 00 00 Shi Slo` | PDF p.16, unsigned big-endian |
 | JPEG data | `76 00 32 00 00 [JPEG] 76 00 32 00 00` | PDF p.17, JPEG SOI/EOI 검사 |
+| Camera settings ACK | `76 00 31 00 00` | PDF p.9, 비행 로그에서도 확인, 체크섬 없음 |
+| Camera capture ACK | `76 00 36 00 00` | PDF p.9, 체크섬 없음 |
 
 DTLM 각 바이트를 LSB부터 bit 0–7 순서로 표시한다. 16/24비트 구형 수신은
 나머지 비트를 0으로 꾸며 채우지 않고 미수신으로 표시한다.

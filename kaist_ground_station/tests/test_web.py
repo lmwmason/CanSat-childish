@@ -609,6 +609,7 @@ class FrozenViewTests(unittest.TestCase):
             service.start_replay(DEMO_RECORDING)
             for _ in range(8):
                 now[0] += 0.5
+                service.tick()
                 server._publish()
             running = state()
             self.assertEqual(running["view_now"], running["now"])                    # live: follows the clock
@@ -638,6 +639,7 @@ class FrozenViewTests(unittest.TestCase):
             service.start_replay(DEMO_RECORDING)
             for _ in range(6):
                 now[0] += 0.5
+                service.tick()
                 server._publish()
             state = json.loads(server.state_json)
             self.assertAlmostEqual(state["last_frame_t"], state["now"] - state["link_age_s"])

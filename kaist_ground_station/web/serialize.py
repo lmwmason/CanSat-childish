@@ -4,6 +4,7 @@ from __future__ import annotations
 import io
 import math
 import re
+from functools import lru_cache
 
 from . import drift
 
@@ -78,18 +79,17 @@ def _decimate(points, limit):
     return picked
 
 
-_drift_cache: dict = {}
-
-
 def drift_dict(t) -> dict:
     """Local-metre fixes, drift estimates and descent rate for the descent view.
 
-    The estimate only changes when a new GPS fix arrives, so it is cached per telemetry object.
+    Snapshots are deep copies: cache by the bounded GPS input, never object identity.
     """
     fixes = drift.aligned_fixes(t.altitude_history, t.track)
-    key = (id(t), len(fixes), fixes[-1][0] if fixes else None)
-    if _drift_cache.get("key") == key:
-        return _drift_cache["value"]
+    return _drift_for_fixes(tuple(fixes))
+
+
+@lru_cache(maxsize=4)
+def _drift_for_fixes(fixes: tuple) -> dict:
     origin, local = drift.to_local(fixes)
     samples, profile, error = drift.estimate(fixes)
     value = {
@@ -102,7 +102,6 @@ def drift_dict(t) -> dict:
         "window_s": drift.WINDOW_S,
         "error": error,
     }
-    _drift_cache.update(key=key, value=value)
     return value
 
 
