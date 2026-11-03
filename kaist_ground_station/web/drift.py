@@ -1,7 +1,7 @@
 """Live horizontal-drift estimate for the descent view (presentation-side, read-only).
 
 The estimate itself is computed by the repository's windField package (the same code and method
-as figure_20261026/METHODS.md), so live numbers and report numbers cannot diverge. This module
+as figure/figure_20261026/METHODS.md), so live numbers and report numbers cannot diverge. This module
 only adapts live GPS fixes to that package's input and the result to the page. If windField is
 not importable the rest of the ground station still works; only the drift panels are empty.
 
