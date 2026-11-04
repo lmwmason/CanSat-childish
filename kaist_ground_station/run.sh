@@ -12,7 +12,7 @@ Usage: run.sh [command] [options]
   (none)                 connect to the kit automatically (USB serial adapter) and open both windows.
                          If no adapter is found, the UI still opens so you can pick a port by hand.
   live [PORT [BAUD]]     same, optionally with an explicit port, e.g.  run.sh live /dev/rfcomm0
-                         Real-hardware sessions are logged under log/kaist-ground-station/hardware/sessions
+                         Recordings are logged under log/kaist-ground-station/sessions
   demo                   replay the bundled example recording (synthetic; GPS only climbs, so no drift estimate)
   mock [opts]            real GoPro descent + synthetic IMU/ATLM, fills every panel
                            --image FILE.jpg   show a test camera image    --speed N   playback speed
@@ -59,7 +59,7 @@ case "$cmd" in
                     exec "$PY" -m kaist_ground_station
                   fi
                   echo "connecting to $port" >&2
-                  exec "$PY" -m kaist_ground_station --port "$port" --baud "${2:-115200}" --log-dir "$ROOT/log/kaist-ground-station/hardware/sessions" ;;
+                  exec "$PY" -m kaist_ground_station --port "$port" --baud "${2:-115200}" ;;
   demo)           shift; need numpy PIL serial; exec "$PY" -m kaist_ground_station --demo "$@" ;;
   mock)           shift; need numpy PIL serial; exec "$PY" -m kaist_ground_station.tools.mock_web "$@" ;;
   replay)         shift; [[ $# -ge 1 ]] || { echo "error: replay needs a traffic.jsonl path" >&2; exit 2; }

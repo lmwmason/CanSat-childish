@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from windField.view3d import _data, write_html, write_preview
+from wind_field.view3d import _data, write_html, write_preview
 
 
 class View3dTests(unittest.TestCase):

@@ -10,7 +10,7 @@ fire_spread/.venv/bin/pip install -r fire_spread/requirements.txt
 fire_spread/.venv/bin/python -m fire_spread
 ```
 
-http://127.0.0.1:8766 을 열고 지상국이 저장한 `events.csv` 또는 `traffic.jsonl`을 선택한다. 프로그램이 GPS 관측을 추출하고 기존 windField 분석기로 수평 바람을 추정한다. 별도 wind_samples.csv 생성 단계나 실행 중인 지상국은 필요하지 않다. 서로 다른 세션 파일을 합치지 않는다. 지도에 관측점과 경계, 보간 바람 방향이 표시되면 경계 안의 발화점을 선택하고 계산한다. 지상국 관측 가져오기는 선택 기능이다. pyrothermel 빌드에 C++ 컴파일러가 필요할 수 있다. 인터넷과 외부 지도·CDN이 필요하며 조회한 지리 영역에 대한 요청은 자료 제공자에게 전달된다.
+http://127.0.0.1:8766 을 열고 지상국이 저장한 `events.csv` 또는 `traffic.jsonl`을 선택한다. 프로그램이 GPS 관측을 추출하고 기존 wind_field 분석기로 수평 바람을 추정한다. 별도 wind_samples.csv 생성 단계나 실행 중인 지상국은 필요하지 않다. 서로 다른 세션 파일을 합치지 않는다. 지도에 관측점과 경계, 보간 바람 방향이 표시되면 경계 안의 발화점을 선택하고 계산한다. 지상국 관측 가져오기는 선택 기능이다. pyrothermel 빌드에 C++ 컴파일러가 필요할 수 있다. 인터넷과 외부 지도·CDN이 필요하며 조회한 지리 영역에 대한 요청은 자료 제공자에게 전달된다.
 
 ## 바람장과 제한
 

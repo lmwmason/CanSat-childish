@@ -77,6 +77,8 @@ DTLM 등 실제 수신 상태가 바뀌었는지 확인한다.
 ## 로그와 재생
 
 기본 저장 위치는 현재 작업 디렉터리의 `log/kaist-ground-station/sessions/`다.
+`run.sh`도 같은 기본 경로를 사용하며, 저장소 루트 기준으로 저장한다.
+기존 `hardware/sessions/`는 과거 실기 기록 보관 위치이며 새 녹화에는 사용하지 않는다.
 루트 `.gitignore`에 따라 `log/`는 커밋되지 않는다. `--log-dir`로 변경할 수 있다.
 LIVE / REPLAY는 각각 별도 세션 폴더로 분리한다.
 

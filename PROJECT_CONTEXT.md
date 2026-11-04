@@ -13,7 +13,7 @@
 | 모위성 | 낙하 감지, 반작용휠 자세 제어, 도어·날개 작동, 활공 제어, GPS/IMU 상태 전송 | [`firmware/motherCansat-Firmware/`](firmware/motherCansat-Firmware/), [`pcb/motherBoard/`](pcb/motherBoard/) |
 | Child 위성 | 분리 감지, 낙하산 서보 작동, 기압·온습도·가속도 크기 측정, EEPROM 비행 기록 | [`firmware/childCansat-Firmware/`](firmware/childCansat-Firmware/), [`3d-model/`](3d-model/) |
 | 지상국 | 모위성 CRSF 텔레메트리 수신·표시·CSV 기록, Child 직렬 로그 조회 | [`guiTool/`](guiTool/) |
-| 오프라인 분석 | GPS 궤적 평활화, 수평 이동 속도 및 바람 대리지표 계산, 2D/3D 그림 | [`windField/`](windField/), [`figure/figure_20261026/`](figure/figure_20261026/) |
+| 오프라인 분석 | GPS 궤적 평활화, 수평 이동 속도 및 바람 대리지표 계산, 2D/3D 그림 | [`wind_field/`](wind_field/), [`figure/figure_20261026/`](figure/figure_20261026/) |
 
 모위성은 STM32F410RB, Child는 ATmega328/Arduino Pro Mini, 지상국은 PyQt6를 사용한다. 모위성의 전송은 CRSF이고 지상국은 받은 프레임을 `mother_YYYYmmdd_HHMMSS.csv`와 원시 `.crsf`로 저장한다([`telemetry_log.py`](guiTool/cansat_gui/telemetry_log.py)). 전체 임무 시퀀스와 빌드 방법은 루트 [`README.md`](README.md)에 있다. README에 언급된 `simulator/`는 **현재 체크아웃에는 없으므로** 해당 경로를 전제로 작업하지 않는다.
 
@@ -45,12 +45,12 @@ GPS 고도에서 큰 하락을 찾은 **임시 하강 후보**는 KST로 114: `0
 
 ## 5. 산출물과 재현 경로
 
-- [`windField/README.md`](windField/README.md): 범용 분석 CLI의 입력 형식·실행법. `python3 -m windField demo --output-dir log/demo`는 합성 자료로 처리 경로를 검증한다. `python3 -m windField analyze INPUT.csv --output-dir log/NAME`은 **정규화된 GPS 위치 포함 CSV**를 분석한다. GoPro 원본 CSV를 CLI에 그대로 넣는 형식은 아니다.
+- [`wind_field/README.md`](wind_field/README.md): 범용 분석 CLI의 입력 형식·실행법. `python3 -m wind_field demo --output-dir log/demo`는 합성 자료로 처리 경로를 검증한다. `python3 -m wind_field analyze INPUT.csv --output-dir log/NAME`은 **정규화된 GPS 위치 포함 CSV**를 분석한다. GoPro 원본 CSV를 CLI에 그대로 넣는 형식은 아니다.
 - [`figure/figure_20261026/README.md`](figure/figure_20261026/README.md): 이번 실측 GPS의 보고서용 그림 **1–16** 목록. 각 그림은 PNG/SVG 쌍이다. [`METHODS.md`](figure/figure_20261026/METHODS.md)는 계산식·구간 선택·오차와 해석 범위, [`CAPTIONS.md`](figure/figure_20261026/CAPTIONS.md)는 보고서용 그림 설명이다.
 - [`figure/figure_20261021/README.md`](figure/figure_20261021/README.md): 이전 자료의 그림 1–7. 입력 자료와 사건 정보가 이번 GoPro 자료와 다르므로 결과 수치를 섞지 않는다.
 - `log/report-2026-10-26/` (**Git 제외**): 원본 해시와 구간 선택을 담은 `selection_summary.json`, 정규화 스크립트 `prepare.py`, Child별 CLI 결과(`analysis_primary_*/`), 창 길이 3/5/7/11/15초 실험, 그림 생성 스크립트 `make_figures.py`·`make_wind_figures.py`, 고도 일관성 확인 `check_altitude_consistency.py`, stdout/stderr, 그림 개정본을 보존한다. 보고서 주 결과는 **11초 위치 평활화, 사출 후 3초 제외, 5 m GPS 고도 bin**이다.
 
-저장소 루트에서 필요 패키지를 설치한 뒤 테스트는 `python3 -m unittest discover -s windField/tests -v`, 분석기 도움말은 `python3 -m windField --help`로 확인할 수 있다. 새 데이터에 적용할 때는 원본 형식과 실제 사건 시각을 먼저 확인하고 별도 `log/` 결과 폴더를 사용한다.
+저장소 루트에서 필요 패키지를 설치한 뒤 테스트는 `python3 -m unittest discover -s wind_field/tests -v`, 분석기 도움말은 `python3 -m wind_field --help`로 확인할 수 있다. 새 데이터에 적용할 때는 원본 형식과 실제 사건 시각을 먼저 확인하고 별도 `log/` 결과 폴더를 사용한다.
 
 ## 6. 협업 규칙과 남은 검증
 

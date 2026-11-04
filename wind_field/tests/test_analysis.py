@@ -4,8 +4,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from windField.__main__ import make_demo
-from windField.core import Config, MissingPositionData, estimate, read_trajectory
+from wind_field.__main__ import make_demo
+from wind_field.core import Config, MissingPositionData, estimate, read_trajectory
 
 
 class AnalysisTests(unittest.TestCase):

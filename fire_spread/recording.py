@@ -56,7 +56,7 @@ def traffic_fixes(text):
     return fixes
 
 def estimate_fixes(fixes,source):
-    from windField import core
+    from wind_field import core
     if len(fixes)<5: raise ValueError('기록에 바람을 추정할 유효 GPS 관측이 부족합니다.')
     if any(b[0] <= a[0] for a,b in zip(fixes,fixes[1:])):
         # Merge duplicate reception times, but reject resets / concatenated sessions.

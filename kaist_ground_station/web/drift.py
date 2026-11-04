@@ -1,8 +1,8 @@
 """Live horizontal-drift estimate for the descent view (presentation-side, read-only).
 
-The estimate itself is computed by the repository's windField package (the same code and method
+The estimate itself is computed by the repository's wind_field package (the same code and method
 as figure/figure_20261026/METHODS.md), so live numbers and report numbers cannot diverge. This module
-only adapts live GPS fixes to that package's input and the result to the page. If windField is
+only adapts live GPS fixes to that package's input and the result to the page. If wind_field is
 not importable the rest of the ground station still works; only the drift panels are empty.
 
 Live differences from the offline analysis: only past fixes exist, so only estimates with a complete
@@ -24,15 +24,15 @@ MAX_EVALUATED_FIXES = 600
 
 
 def _load_windfield():
-    """windField lives at the repository root; find it from this file, not the working directory."""
+    """wind_field lives at the repository root; find it from this file, not the working directory."""
     root = Path(__file__).resolve().parents[2]
-    if (root / "windField").is_dir() and str(root) not in sys.path:
+    if (root / "wind_field").is_dir() and str(root) not in sys.path:
         sys.path.append(str(root))
     try:
-        from windField import core
+        from wind_field import core
         return core, None
     except ImportError as exc:
-        return None, f"windField를 불러올 수 없음: {exc}"
+        return None, f"wind_field를 불러올 수 없음: {exc}"
 
 
 def aligned_fixes(altitude_history, track) -> list[tuple[float, float, float, float]]:
@@ -77,7 +77,7 @@ def estimate(fixes, window_s: float = WINDOW_S):
         result, _ = core.estimate(rows, cfg)
     except ValueError:      # not enough descending samples yet: show nothing rather than guess
         return [], [], None
-    # windField also evaluates at the newest fixes with a one-sided window; the report only uses
+    # wind_field also evaluates at the newest fixes with a one-sided window; the report only uses
     # complete windows, so drop estimates whose window reaches past the newest fix.
     complete = [r for r in result if r["t_s"] <= rows[-1]["t_s"] - window_s / 2]
     samples = [[r["t_s"], r["east_m"], r["north_m"], r["alt_m"], r["wind_e_ms"], r["wind_n_ms"]]

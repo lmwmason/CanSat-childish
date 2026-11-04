@@ -59,7 +59,7 @@ constant in the source and can be tuned.
 - **Sensors on the mother:** MPU6050 + ICM-42688 (I2C), u-blox NEO-6M GPS (I2C / DDC), TBS Crossfire receiver (CRSF, UART)
 - **Child firmware:** C++ / Arduino framework with [PlatformIO](https://platformio.org/); BMP280, MPU6050 (on-chip DMP), DHT11
 - **Ground station:** Python 3, [PyQt6](https://www.riverbankcomputing.com/software/pyqt/) (Qt Serial Port), [PyInstaller](https://pyinstaller.org/) and AppImage for releases
-- **KAIST kit ground station:** Python 3 (standard-library HTTP server, numpy, Pillow, pyserial), a plain HTML / canvas browser UI; `windField/` for the wind estimate
+- **KAIST kit ground station:** Python 3 (standard-library HTTP server, numpy, Pillow, pyserial), a plain HTML / canvas browser UI; `wind_field/` for the wind estimate
 - **Simulator:** C11, [Open Dynamics Engine](https://www.ode.org/), Python with matplotlib / numpy for the viewer
 - **Hardware design:** [KiCad](https://www.kicad.org/)
 
@@ -211,7 +211,7 @@ kaist_ground_station/      Ground station for the KAIST kit (web UI)
   config/                  ui.cfg (language, colors, alarms, checkpoints)
   demo/                    Bundled example recording for `run.sh demo`
   tools/                   Mock kit for trying the UI without hardware
-windField/                 Wind estimate from GPS descents, used by the KAIST ground station
+wind_field/                 Wind estimate from GPS descents, used by the KAIST ground station
 simulator/
   core/                    Hardware-independent flight logic in C
   sim/                     Mothership and child simulations (physics)

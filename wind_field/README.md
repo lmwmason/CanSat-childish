@@ -5,10 +5,10 @@
 ## 실행
 
 ```bash
-python3 -m pip install -r windField/requirements.txt
-python3 -m windField demo --output-dir log/demo
-python3 -m windField analyze child_with_gps.csv --output-dir log/flight-001
-python3 -m unittest discover -s windField/tests -v
+python3 -m pip install -r wind_field/requirements.txt
+python3 -m wind_field demo --output-dir log/demo
+python3 -m wind_field analyze child_with_gps.csv --output-dir log/flight-001
+python3 -m unittest discover -s wind_field/tests -v
 ```
 
 `demo`는 세 Child의 합성 GPS/기압 CSV, 생성에 사용한 참값과 조건, 계산 결과, CSV 프로파일, PNG 그림, 설정·입력 SHA-256·통계가 담긴 `analysis.json`을 지정한 `log/` 폴더에 저장한다. 결과 폴더를 다르게 지정하면 이전 실험을 덮어쓰지 않는다. `docs/`와 `log/`는 Git에서 제외된다.

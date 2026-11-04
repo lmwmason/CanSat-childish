@@ -64,7 +64,7 @@ def from_csv(text, window=60.):
     reader=csv.DictReader(io.StringIO(text))
     required={'t_s','lat','lon','alt_m','wind_e_ms','wind_n_ms','accepted','child_id'}
     if not required.issubset(reader.fieldnames or []):
-        raise ValueError('windField wind_samples.csv 형식이 아닙니다.')
+        raise ValueError('wind_field wind_samples.csv 형식이 아닙니다.')
     rows=[];ids=set()
     for i,r in enumerate(reader):
         if i>=20000: raise ValueError('표본 수가 너무 많습니다.')
